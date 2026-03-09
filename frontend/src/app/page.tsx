@@ -43,7 +43,7 @@ export default function Home() {
       <header style={{ textAlign: 'center', marginBottom: '10px', zIndex: 30, position: 'relative' }}>
         <h1 style={{ fontSize: '4rem', fontWeight: 800, marginBottom: '8px', lineHeight: 1.1 }}>
           <span style={{ fontSize: '1.8rem', color: '#f8fafc', display: 'block', marginBottom: '8px', fontWeight: 700, letterSpacing: '3px', textTransform: 'uppercase', textShadow: '0 2px 10px rgba(255,255,255,0.1)' }}>Jingdi จริงดิ!</span>
-          <span className="text-gradient-secondary">AI ตรวจสอบความจริง</span>
+          <span className="text-gradient-secondary">AI ตรวจสอบเฟคนิวส์</span>
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '1.3rem', marginTop: '16px', fontWeight: 400 }}>
           วิเคราะห์ความน่าเชื่อถือของเนื้อหา ลิงก์ รูปภาพ ด้วย AI ในคลิกเดียว

@@ -9,7 +9,13 @@ No second Gemini Vision call here — keywords come from vision_result.
 
 import io
 import json
+import requests
 from PIL import Image
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "0389298144c80dc48a35dc467c8df0799af7fd6155df6dfd7837e5e6bf6d5a75")
 
 
 def ddg_image_search(query: str) -> list:
@@ -23,7 +29,7 @@ def ddg_image_search(query: str) -> list:
     if not query.strip():
         return []
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         results = []
         seen_urls = set()
 
@@ -46,6 +52,66 @@ def ddg_image_search(query: str) -> list:
     except Exception as e:
         print(f"[DDG Image Search] Error: {e}")
         return []
+
+        
+import base64
+
+def serpapi_google_lens(image_bytes: bytes) -> list[dict]:
+    """
+    Perform a reverse image search using SerpApi Google Lens engine.
+    Encodes the image_bytes to base64 Data URI to avoid needing a public URL.
+    Returns a list of dictionaries with 'title', 'link', and 'snippet'.
+    """
+    if not image_bytes:
+        return []
+
+    print(f"\n[SerpApi] Searching Google Lens with Base64 Image (size: {len(image_bytes)} bytes)")
+    
+    b64_img = base64.b64encode(image_bytes).decode('utf-8')
+    data_uri = f"data:image/jpeg;base64,{b64_img}"
+    
+    params = {
+      "engine": "google_lens",
+      "url": data_uri,
+      "api_key": SERPAPI_KEY,
+      "hl": "th"
+    }
+
+    results = []
+    seen_urls = set()
+    
+    try:
+        response = requests.get("https://serpapi.com/search", params=params, timeout=20)
+        
+        if response.status_code == 200:
+            data = response.json()
+            matches = data.get("visual_matches", [])
+            print(f"[SerpApi] Found {len(matches)} visual matches")
+            
+            for match in matches:
+                # Basic sanitation
+                link = match.get("link")
+                title = match.get("title")
+                snippet = match.get("source") # sometimes source name is more useful
+                
+                if link and title and link not in seen_urls:
+                    seen_urls.add(link)
+                    results.append({
+                        "title": title,
+                        "link": link,
+                        "snippet": f"Source: {snippet}" if snippet else "Google Lens Visual Match",
+                        "source": "SerpApi Google Lens"
+                    })
+                    
+                    if len(results) >= 15: # Cap to 15 results
+                        break
+        else:
+            print(f"[SerpApi] Error status {response.status_code}: {response.text[:200]}")
+            
+    except Exception as e:
+        print(f"[SerpApi] Exception during Google Lens search: {e}")
+        
+    return results
 
 
 def reverse_image_search(keywords: list, is_global: bool = False) -> dict:

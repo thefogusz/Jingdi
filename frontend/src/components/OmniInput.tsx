@@ -45,31 +45,44 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
       if (files.length > 0) {
         const formData = new FormData();
         files.forEach(f => formData.append("files", f));
-        // Use relative URL — Next.js proxy forwards to backend:8000
-        const res = await fetch('/api/check-image', {
+        
+        // Bypassing Next.js rewrite proxy because multipart/form-data often drops sockets
+        // sending directly to FastApi backend
+        const res = await fetch('http://127.0.0.1:8000/api/check-image', {
           method: 'POST',
           body: formData
         });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error('Backend error:', res.status, errText);
+          throw new Error(`เซิร์ฟเวอร์ตอบกลับ ${res.status}: ${res.statusText}`);
+        }
         const data = await res.json();
         setResults(data);
       } else {
         // Submit Text or URL
         const isUrl = text.trim().startsWith('http://') || text.trim().startsWith('https://');
-        const endpoint = isUrl ? '/api/check-url' : '/api/check-text';
+        const endpoint = isUrl ? 'http://127.0.0.1:8000/api/check-url' : 'http://127.0.0.1:8000/api/check-text';
         const body = isUrl ? { url: text.trim() } : { text: text.trim() };
 
-        // Use relative URL — Next.js proxy forwards to backend:8000
+        // Bypassing Next.js rewrite proxy
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error('Backend error:', res.status, errText);
+          throw new Error(`เซิร์ฟเวอร์ตอบกลับ ${res.status}: ${res.statusText}`);
+        }
         const data = await res.json();
         setResults(data);
       }
     } catch (err) {
       console.error(err);
-      setResults({ score: 0, analysis: "เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์", sources: [] });
+      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์";
+      setResults({ score: 0, analysis: `❌ ${msg}`, sources: [] });
     }
     setLoading(false);
   };

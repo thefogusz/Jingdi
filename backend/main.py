@@ -10,7 +10,7 @@ app = FastAPI(title="Fake News Detection API")
 # Configure CORS for Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to frontend URL
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.1.235:3000"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,7 +39,8 @@ import database
 from services.llm_service import analyze_text_claim, analyze_with_grok, analyze_image_fact_check, get_next_client
 from services.search_service import search_web, scrape_url
 from services.vision_service import analyze_images_with_vision
-from services.reverse_image_service import reverse_image_search
+from services.reverse_image_service import reverse_image_search, serpapi_google_lens
+from services.rss_service import search_rss_precheck
 from typing import List
 
 @app.get("/")
@@ -58,8 +59,16 @@ def check_text(request: TextCheckRequest):
     check_kill_switch()
     start_time = time.time()
     try:
+        # Tier 0: RSS Pre-Check
+        from services.search_service import extract_keywords
+        keywords = extract_keywords(request.text)
+        rss_matches = search_rss_precheck(request.text, keywords)
+        
         # Tier 1: Free Search + Gemini
         search_context = search_web(request.text)
+        if rss_matches:
+             search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
+             
         analysis_result = analyze_text_claim(request.text, search_context=search_context)
         score = analysis_result.get("score", 50)
         
@@ -82,7 +91,15 @@ def check_text(request: TextCheckRequest):
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-text", request.text[:100], latency, "error", str(e))
-        raise 
+        return {
+            "log_id": -1,
+            "score": 50,
+            "analysis": "ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบข้อความได้ในขณะนี้",
+            "claims_extracted": [],
+            "suspicious_words": [],
+            "sources": [],
+            "visual_indicators": []
+        }
 
 @app.post("/api/check-url")
 def check_url(request: UrlCheckRequest):
@@ -98,7 +115,13 @@ def check_url(request: UrlCheckRequest):
         if not search_query or search_query == 'N/A': search_query = cleaned_url
         search_context = search_web(search_query)
         
+        # Tier 0: RSS Pre-Check
+        rss_matches = search_rss_precheck(search_query, search_query)
+        
         combined_context = f"Scraped Content: {scraped.get('text', 'N/A')}\n\nWeb Search Results: {search_context}"
+        if rss_matches:
+             combined_context = f"🚨 VERIFIED FACT-CHECK (RSS): {str(rss_matches)}\n\n" + combined_context
+             
         analysis_result = analyze_text_claim(f"Verify this article: {cleaned_url} - {scraped.get('title', 'N/A')}", search_context=combined_context)
         score = analysis_result.get("score", 50)
         
@@ -150,7 +173,15 @@ def check_url(request: UrlCheckRequest):
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-url", request.url[:100], latency, "error", str(e))
-        raise
+        return {
+            "log_id": -1,
+            "score": 50,
+            "analysis": "ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบ URL ได้ในขณะนี้",
+            "claims_extracted": [],
+            "suspicious_words": [],
+            "sources": [],
+            "visual_indicators": []
+        }
 
 @app.post("/api/check-image")
 async def check_image(files: List[UploadFile] = File(...)):
@@ -177,6 +208,20 @@ async def check_image(files: List[UploadFile] = File(...)):
         rev_summary  = rev_search.get("summary", "")
         rev_pages    = rev_search.get("pages", [])
 
+        # --- Step 1c: SerpApi Google Lens Reverse Image Search ---
+        serpapi_sources = []
+        try:
+            if contents:
+                print("[main] Searching SerpApi Google Lens with raw image bytes...")
+                serpapi_sources = serpapi_google_lens(contents[0])
+        except Exception as e:
+            print(f"[main] SerpApi integration error: {e}")
+
+        # Combine reverse image sources
+        combined_rev_pages = rev_pages.copy() if isinstance(rev_pages, list) else []
+        if serpapi_sources:
+             combined_rev_pages = serpapi_sources + combined_rev_pages
+
         # --- Step 2: Build DuckDuckGo text search context ---
         # Use Gemini Vision's English keywords as primary query — far more accurate than Thai OCR caption
         if eng_keywords:
@@ -187,6 +232,15 @@ async def check_image(files: List[UploadFile] = File(...)):
             search_query = extracted_text
 
         search_context = search_web(search_query) if search_query.strip() else []
+        
+        # Tier 0: RSS Pre-Check for Images
+        rss_matches = search_rss_precheck(extracted_text, " ".join(eng_keywords))
+        if rss_matches:
+             search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
+        
+        # Inject SerpApi visual matches into the search context for Grok
+        if serpapi_sources:
+            search_context.append({"title": "Google Lens Visual Matches", "snippet": str(serpapi_sources), "url": "reverse-image-search"})
 
         # --- Step 3 & 4: Grok Text Analysis via Gemini Extractions ---
         # Since xAI API key doesn't support grok-vision, we rely on Gemini to read the image
@@ -198,10 +252,10 @@ async def check_image(files: List[UploadFile] = File(...)):
 
         # Supplement sources with reverse-image pages if Grok found none
         grok_sources = analysis_result.get("sources", [])
-        if not grok_sources and rev_pages:
+        if not grok_sources and combined_rev_pages:
             grok_sources = [
-                {"title": p.get("title") or p["url"], "snippet": "พบภาพนี้บนหน้าเว็บนี้", "link": p["url"]}
-                for p in rev_pages[:5]
+                {"title": p.get("title") or p.get("url", ""), "snippet": p.get("snippet", "พบภาพนี้บนหน้าเว็บนี้"), "link": p.get("url") or p.get("link", "")}
+                for p in combined_rev_pages[:5]
             ]
 
         latency = int((time.time() - start_time) * 1000)
@@ -219,7 +273,14 @@ async def check_image(files: List[UploadFile] = File(...)):
         import traceback
         with open("error_log.txt", "a", encoding="utf-8") as f:
             f.write(traceback.format_exc() + "\n")
-        raise e
+        return {
+            "log_id": -1,
+            "score": 50,
+            "analysis": "ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบรูปภาพได้ในขณะนี้",
+            "sources": [],
+            "visual_indicators": [],
+            "extracted_text": ""
+        }
 
 @app.post("/api/check-screenshot")
 async def check_screenshot(files: List[UploadFile] = File(...)):
@@ -236,6 +297,22 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
         if extracted_text and len(extracted_text) > 5:
             # Tier 1: Free Search + Gemini
             search_context = search_web(extracted_text)
+            
+            # Additional Tier: SerpApi Google Lens Reverse Image Search
+            serpapi_sources = []
+            try:
+                if contents:
+                    print("[main] Searching SerpApi Google Lens for screenshot...")
+                    serpapi_sources = serpapi_google_lens(contents[0])
+                    if serpapi_sources:
+                        search_context.append({
+                            "title": "Google Lens Visual Matches", 
+                            "snippet": str(serpapi_sources), 
+                            "url": "reverse-image-search"
+                        })
+            except Exception as e:
+                print(f"[main] SerpApi integration error in screenshot: {e}")
+
             analysis_result = analyze_text_claim(extracted_text, search_context=search_context)
             score = analysis_result.get("score", 50)
             
@@ -276,12 +353,21 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 
             latency = int((time.time() - start_time) * 1000)
             log_id = database.log_request("/api/check-screenshot", "[Screenshot Analysed]", latency, "success", cost=0.005)
+            
+            # Supplement sources with reverse-image pages if Grok found none
+            grok_sources = analysis_result.get("sources", [])
+            if not grok_sources and serpapi_sources:
+                grok_sources = [
+                    {"title": p.get("title") or p.get("url", ""), "snippet": p.get("snippet", "พบภาพนี้บนหน้าเว็บนี้"), "link": p.get("url") or p.get("link", "")}
+                    for p in serpapi_sources[:5]
+                ]
+
             # Combine results
             return {
                 "log_id": log_id,
                 "score": analysis_result.get("score", vision_result.get("score", 50)),
                 "analysis": analysis_result.get("analysis", vision_result.get("analysis", "")),
-                "sources": analysis_result.get("sources", []),
+                "sources": grok_sources,
                 "visual_indicators": visual_indicators,
                 "extracted_text": extracted_text
             }
@@ -304,7 +390,14 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-screenshot", "[Screenshot Error]", latency, "error", str(e))
-        raise
+        return {
+            "log_id": -1,
+            "score": 50,
+            "analysis": "ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบภาพ screenshot ได้ในขณะนี้",
+            "sources": [],
+            "visual_indicators": [],
+            "extracted_text": ""
+        }
 
 
 class ChatRequest(BaseModel):
