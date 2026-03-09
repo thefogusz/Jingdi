@@ -35,7 +35,9 @@ class FeedbackRequest(BaseModel):
 import os
 import io
 import time
+import uuid
 import database
+from fastapi.responses import FileResponse
 from services.llm_service import analyze_text_claim, analyze_with_grok, analyze_image_fact_check, get_next_client
 from services.search_service import search_web, scrape_url
 from services.vision_service import analyze_images_with_vision
@@ -58,6 +60,7 @@ def check_kill_switch():
 def check_text(request: TextCheckRequest):
     check_kill_switch()
     start_time = time.time()
+    case_id = str(uuid.uuid4())
     try:
         # Tier 0: RSS Pre-Check
         from services.search_service import extract_keywords
@@ -69,15 +72,17 @@ def check_text(request: TextCheckRequest):
         if rss_matches:
              search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
              
+        database.log_request("[API] Gemini Text", request.text[:100], 0, "info", cost=0.0002, case_id=case_id, api_name="Gemini")
         analysis_result = analyze_text_claim(request.text, search_context=search_context)
         score = analysis_result.get("score", 50)
         
         # Tier 2: Escalate to Grok if inconclusive, no sources, or Gemini failed (skip_to_grok)
         if (40 < score < 60) or not analysis_result.get("sources") or analysis_result.get("skip_to_grok"):
+            database.log_request("[API] Grok 4.1 Reasoning", request.text[:100], 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
             analysis_result = analyze_with_grok(request.text, search_context=search_context)
             
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-text", request.text[:100], latency, "success", cost=0.0001)
+        log_id = database.log_request("/api/check-text", request.text[:100], latency, "success", cost=0.0001, case_id=case_id)
         
         return {
             "log_id": log_id,
@@ -90,7 +95,7 @@ def check_text(request: TextCheckRequest):
         }
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
-        database.log_request("/api/check-text", request.text[:100], latency, "error", str(e))
+        database.log_request("/api/check-text", request.text[:100], latency, "error", str(e), case_id=case_id)
         return {
             "log_id": -1,
             "score": 50,
@@ -105,6 +110,7 @@ def check_text(request: TextCheckRequest):
 def check_url(request: UrlCheckRequest):
     check_kill_switch()
     start_time = time.time()
+    case_id = str(uuid.uuid4())
     try:
         # Scrape the URL
         scraped = scrape_url(request.url)
@@ -122,6 +128,7 @@ def check_url(request: UrlCheckRequest):
         if rss_matches:
              combined_context = f"🚨 VERIFIED FACT-CHECK (RSS): {str(rss_matches)}\n\n" + combined_context
              
+        database.log_request("[API] Gemini Text", request.url[:100], 0, "info", cost=0.0002, case_id=case_id, api_name="Gemini")
         analysis_result = analyze_text_claim(f"Verify this article: {cleaned_url} - {scraped.get('title', 'N/A')}", search_context=combined_context)
         score = analysis_result.get("score", 50)
         
@@ -156,10 +163,11 @@ def check_url(request: UrlCheckRequest):
             4. EVIDENCE OF SEARCH & MISSING DATA: You MUST explicitly state the breadth of your search. If you CANNOT find real evidence, state clearly: "**จากการตรวจสอบแหล่งข้อมูลข่าวที่น่าเชื่อถือหลัก** ไม่พบรายงานที่ยืนยันเรื่องนี้ได้"
             5. SOURCES: You MUST populate the `sources` JSON array. Format: [{{"title": "Headline", "snippet": "Quote", "link": "EXACT_WORKING_URL"}}]. CRITICAL: If you do not have the exact, working URL from a real news source, you MUST provide a Google search link to find it, formatted exactly like: "https://www.google.com/search?q=Keywords". NEVER hallucinate broken URLs or fake domains.
             """
+            database.log_request("[API] Grok 4.1 Reasoning", request.url[:100], 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
             analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
         
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-url", request.url[:100], latency, "success", cost=0.0001)
+        log_id = database.log_request("/api/check-url", request.url[:100], latency, "success", cost=0.0001, case_id=case_id)
 
         return {
             "log_id": log_id,
@@ -172,7 +180,7 @@ def check_url(request: UrlCheckRequest):
         }
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
-        database.log_request("/api/check-url", request.url[:100], latency, "error", str(e))
+        database.log_request("/api/check-url", request.url[:100], latency, "error", str(e), case_id=case_id)
         return {
             "log_id": -1,
             "score": 50,
@@ -183,14 +191,32 @@ def check_url(request: UrlCheckRequest):
             "visual_indicators": []
         }
 
+@app.get("/api/admin/image/{filename}")
+def get_admin_image(filename: str):
+    if not filename or ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    file_path = os.path.join("uploads", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Image not found")
+
 @app.post("/api/check-image")
 async def check_image(files: List[UploadFile] = File(...)):
+    case_id = str(uuid.uuid4())
     try:
         check_kill_switch()
         start_time = time.time()
         contents = [await file.read() for file in files]
 
+        # Save first image temporarily for admin context
+        os.makedirs("uploads", exist_ok=True)
+        img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
+        with open(os.path.join("uploads", img_filename), "wb") as f:
+            f.write(contents[0])
+
         # --- Step 1: Gemini Vision — OCR + visual indicators + English keywords (ONE call) ---
+        database.log_request("[API] Gemini Vision", f"[Image] {img_filename}", 0, "info", cost=0.005, case_id=case_id, api_name="Gemini")
         vision_result    = analyze_images_with_vision(contents, is_screenshot=False)
         extracted_text   = vision_result.get("extracted_text", "")
         visual_indicators= vision_result.get("visual_indicators", [])
@@ -208,19 +234,8 @@ async def check_image(files: List[UploadFile] = File(...)):
         rev_summary  = rev_search.get("summary", "")
         rev_pages    = rev_search.get("pages", [])
 
-        # --- Step 1c: SerpApi Google Lens Reverse Image Search ---
-        serpapi_sources = []
-        try:
-            if contents:
-                print("[main] Searching SerpApi Google Lens with raw image bytes...")
-                serpapi_sources = serpapi_google_lens(contents[0])
-        except Exception as e:
-            print(f"[main] SerpApi integration error: {e}")
-
         # Combine reverse image sources
         combined_rev_pages = rev_pages.copy() if isinstance(rev_pages, list) else []
-        if serpapi_sources:
-             combined_rev_pages = serpapi_sources + combined_rev_pages
 
         # --- Step 2: Build DuckDuckGo text search context ---
         # Use Gemini Vision's English keywords as primary query — far more accurate than Thai OCR caption
@@ -237,18 +252,35 @@ async def check_image(files: List[UploadFile] = File(...)):
         rss_matches = search_rss_precheck(extracted_text, " ".join(eng_keywords))
         if rss_matches:
              search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
-        
-        # Inject SerpApi visual matches into the search context for Grok
-        if serpapi_sources:
-            search_context.append({"title": "Google Lens Visual Matches", "snippet": str(serpapi_sources), "url": "reverse-image-search"})
 
         # --- Step 3 & 4: Grok Text Analysis via Gemini Extractions ---
         # Since xAI API key doesn't support grok-vision, we rely on Gemini to read the image
         text_for_grok = f"Headline/Text extracted from image: {extracted_text}"
         if eng_keywords:
             text_for_grok += f" | Key concepts extracted: {', '.join(eng_keywords)}"
-            
+
+        database.log_request("[API] Grok 4.1 Reasoning", f"[Image analysis] {extracted_text[:60]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")            
         analysis_result = analyze_with_grok(text_for_grok, str(search_context))
+
+        # --- LAST RESORT: SerpApi Google Lens ---
+        score = analysis_result.get("score", 50)
+        grok_sources = analysis_result.get("sources", [])
+        serpapi_sources = []
+
+        if (40 < score < 60) or not grok_sources:
+            print("[main] Inconclusive image result. Searching SerpApi Google Lens as last resort...")
+            try:
+                if contents:
+                    database.log_request("[API] SerpApi Google Lens", f"[Image reverse search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
+                    serpapi_sources = serpapi_google_lens(contents[0])
+                    if serpapi_sources:
+                        search_context.append({"title": "Google Lens Visual Matches", "snippet": str(serpapi_sources), "url": "reverse-image-search"})
+                        # Re-run Grok with the new visual matches context
+                        analysis_result = analyze_with_grok(text_for_grok, str(search_context))
+                        grok_sources = analysis_result.get("sources", [])
+                        combined_rev_pages = serpapi_sources + combined_rev_pages
+            except Exception as e:
+                print(f"[main] SerpApi integration error: {e}")
 
         # Supplement sources with reverse-image pages if Grok found none
         grok_sources = analysis_result.get("sources", [])
@@ -259,7 +291,7 @@ async def check_image(files: List[UploadFile] = File(...)):
             ]
 
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-image", "[Image Upload]", latency, "success", cost=0.005)
+        log_id = database.log_request("/api/check-image", f"[Image Upload] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
 
         return {
             "log_id": log_id,
@@ -288,6 +320,13 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
     start_time = time.time()
     try:
         contents = [await file.read() for file in files]
+        
+        # Save first image temporarily for admin context
+        os.makedirs("uploads", exist_ok=True)
+        img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
+        with open(os.path.join("uploads", img_filename), "wb") as f:
+            f.write(contents[0])
+
         vision_result = analyze_images_with_vision(contents, is_screenshot=True)
         
         extracted_text = vision_result.get("extracted_text", "")
@@ -297,21 +336,6 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
         if extracted_text and len(extracted_text) > 5:
             # Tier 1: Free Search + Gemini
             search_context = search_web(extracted_text)
-            
-            # Additional Tier: SerpApi Google Lens Reverse Image Search
-            serpapi_sources = []
-            try:
-                if contents:
-                    print("[main] Searching SerpApi Google Lens for screenshot...")
-                    serpapi_sources = serpapi_google_lens(contents[0])
-                    if serpapi_sources:
-                        search_context.append({
-                            "title": "Google Lens Visual Matches", 
-                            "snippet": str(serpapi_sources), 
-                            "url": "reverse-image-search"
-                        })
-            except Exception as e:
-                print(f"[main] SerpApi integration error in screenshot: {e}")
 
             analysis_result = analyze_text_claim(extracted_text, search_context=search_context)
             score = analysis_result.get("score", 50)
@@ -351,8 +375,29 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 
                 analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
                 
+                # --- LAST RESORT: SerpApi Google Lens for Screenshot ---
+                grok_score = analysis_result.get("score", 50)
+                grok_sources = analysis_result.get("sources", [])
+                serpapi_sources = []
+
+                if (40 < grok_score < 60) or not grok_sources:
+                    print("[main] Inconclusive screenshot result. Searching SerpApi Google Lens as last resort...")
+                    try:
+                        if contents:
+                            serpapi_sources = serpapi_google_lens(contents[0])
+                            if serpapi_sources:
+                                search_context.append({
+                                    "title": "Google Lens Visual Matches", 
+                                    "snippet": str(serpapi_sources), 
+                                    "url": "reverse-image-search"
+                                })
+                                # Re-run Grok with the new visual matches context
+                                analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
+                    except Exception as e:
+                        print(f"[main] SerpApi integration error in screenshot: {e}")
+                
             latency = int((time.time() - start_time) * 1000)
-            log_id = database.log_request("/api/check-screenshot", "[Screenshot Analysed]", latency, "success", cost=0.005)
+            log_id = database.log_request("/api/check-screenshot", f"[Screenshot Analysed] {img_filename}", latency, "success", cost=0.005)
             
             # Supplement sources with reverse-image pages if Grok found none
             grok_sources = analysis_result.get("sources", [])
@@ -378,7 +423,7 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 analysis += " ไม่พบข้อความหรือจุดสังเกตในภาพที่สามารถนำไปตรวจสอบต่อได้"
                 
             latency = int((time.time() - start_time) * 1000)
-            log_id = database.log_request("/api/check-screenshot", "[No Extracted Text]", latency, "success", cost=0.005)
+            log_id = database.log_request("/api/check-screenshot", f"[No Extracted Text] {img_filename}", latency, "success", cost=0.005)
             return {
                 "log_id": log_id,
                 "score": vision_result.get("score", 50),
@@ -437,17 +482,48 @@ async def admin_chat(req: ChatRequest):
 Review the current system stats: {stats}
 The user is the Administrator. Answer their question based on the stats in informative, conversational Thai language. Be extremely helpful and explain technical terms simply."""
 
-        client = get_next_client()
-        if client:
-             res = client.models.generate_content(
+        from services.llm_service import grok_client, get_next_client
+        from google.genai import types as genai_types
+
+        # Try Grok first (with model fallback), then Gemini
+        grok_models = ["grok-4-1-fast-non-reasoning", "grok-4-1-fast-reasoning"]
+        
+        if grok_client:
+            for model_name in grok_models:
+                try:
+                    response = grok_client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": req.message}
+                        ],
+                        temperature=0.3
+                    )
+                    return {"reply": response.choices[0].message.content.strip()}
+                except Exception as grok_err:
+                    err_str = str(grok_err)
+                    if "429" in err_str or "quota" in err_str.lower() or "exhausted" in err_str.lower() or "rate limit" in err_str.lower():
+                        continue  # Try next Grok model
+                    raise  # Re-raise non-rate-limit errors
+
+        # Fallback: Gemini
+        gemini_client = get_next_client()
+        if gemini_client:
+            gemini_prompt = f"{system_prompt}\n\nคำถามของแอดมิน: {req.message}"
+            gem_response = gemini_client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=f"{system_prompt}\n\nAdmin: {req.message}"
-             )
-             return {"reply": res.text.strip()}
-        else:
-             return {"reply": "ไม่สามารถติดต่อ Gemini API ได้"}
+                contents=gemini_prompt,
+                config=genai_types.GenerateContentConfig(temperature=0.3),
+            )
+            return {"reply": f"[Gemini Fallback] {gem_response.text.strip()}"}
+        
+        return {"reply": "ไม่สามารถติดต่อ AI ได้ในขณะนี้ (ทั้ง Grok และ Gemini ไม่พร้อมใช้งาน)"}
     except Exception as e:
-        return {"reply": f"เกิดข้อผิดพลาด: {e}"}
+        err_str = str(e)
+        if "429" in err_str or "quota" in err_str.lower() or "exhausted" in err_str.lower() or "rate limit" in err_str.lower():
+            return {"reply": "⚠️ ขออภัยครับ AI Support มีการเรียกใช้งานเกินโควต้า (Rate Limit Exceeded) กรุณารอสักครู่แล้วลองถามใหม่นะครับ 🙏"}
+        return {"reply": f"เกิดข้อผิดพลาดในการเชื่อมต่อ AI: {e}"}
+
 
 if __name__ == "__main__":
     import uvicorn
