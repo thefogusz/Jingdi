@@ -6,7 +6,7 @@ import ResultsView from '@/components/ResultsView';
 import DetectiveLoader from '@/components/DetectiveLoader';
 import './globals.css';
 
-export type CatState = 'idle' | 'hasFile' | 'loading' | 'success' | 'fake';
+export type CatState = 'idle' | 'focused' | 'hasFile' | 'loading' | 'success' | 'fake';
 
 export default function Home() {
   const [results, setResults] = useState<any>(null);
@@ -40,9 +40,11 @@ export default function Home() {
       
       <DetectiveLoader visible={loading} />
 
-      <header style={{ textAlign: 'center', marginBottom: '10px', zIndex: 30, position: 'relative' }}>
-        <h1 style={{ fontSize: '4rem', fontWeight: 800, marginBottom: '8px', lineHeight: 1.1 }}>
-          <span style={{ fontSize: '1.8rem', color: '#f8fafc', display: 'block', marginBottom: '8px', fontWeight: 700, letterSpacing: '3px', textTransform: 'uppercase', textShadow: '0 2px 10px rgba(255,255,255,0.1)' }}>Jingdi จริงดิ!</span>
+      <header className="text-center mb-6 z-30 relative px-2">
+        <h1 className="font-extrabold mb-3 leading-tight text-4xl sm:text-5xl md:text-6xl">
+          <span className="block text-2xl sm:text-3xl text-slate-50 mb-2 font-bold tracking-[0.1em] uppercase drop-shadow-[0_2px_10px_rgba(255,255,255,0.1)]">
+            Jingdi จริงดิ!
+          </span>
           <span className="text-gradient-secondary">AI ตรวจสอบเฟคนิวส์</span>
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '1.3rem', marginTop: '16px', fontWeight: 400 }}>

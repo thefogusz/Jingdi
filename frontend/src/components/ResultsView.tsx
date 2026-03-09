@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 
 export default function ResultsView({ results, onClear }: { results: any, onClear: () => void }) {
   if (!results) return null;
@@ -376,8 +377,8 @@ export default function ResultsView({ results, onClear }: { results: any, onClea
 
       </div>
 
-      {/* Dislike Feedback Modal */}
-      {showFeedbackModal && (
+      {/* Dislike Feedback Modal — rendered via Portal at body level to avoid overflow:hidden clip */}
+      {showFeedbackModal && typeof document !== 'undefined' && ReactDOM.createPortal(
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
           background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
@@ -437,7 +438,7 @@ export default function ResultsView({ results, onClear }: { results: any, onClea
 
               {/* Option 3 */}
               <label style={{ 
-                display: 'flex', alignItems: 'center', padding: '16px', cursor: 'pointer', borderRadius: '12px',
+                display: 'flex', flexDirection: 'column', padding: '16px', cursor: 'pointer', borderRadius: '12px',
                 border: feedbackReason === 'other' ? '1px solid var(--text-secondary)' : '1px solid var(--surface-border)',
                 background: feedbackReason === 'other' ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
                 transition: 'all 0.2s ease'
@@ -452,16 +453,31 @@ export default function ResultsView({ results, onClear }: { results: any, onClea
 
             </div>
             
-            <textarea 
-              placeholder="อธิบายเพิ่มเติม (ไม่บังคับ)..."
-              value={feedbackDetails}
-              onChange={(e) => setFeedbackDetails(e.target.value)}
-              style={{
-                width: '100%', height: '80px', padding: '12px', borderRadius: '12px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--surface-border)',
-                color: 'var(--text-primary)', marginBottom: '24px', resize: 'none'
-              }}
-            />
+            {feedbackReason === 'other' && (
+              <textarea 
+                placeholder="อธิบายเพิ่มเติม (บังคับเมื่อเลือกอื่นๆ)..."
+                value={feedbackDetails}
+                onChange={(e) => setFeedbackDetails(e.target.value)}
+                style={{
+                  width: '100%', height: '80px', padding: '12px', borderRadius: '12px',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--surface-border)',
+                  color: 'var(--text-primary)', marginBottom: '24px', resize: 'none'
+                }}
+              />
+            )}
+            
+            {feedbackReason !== 'other' && (
+               <textarea 
+                placeholder="อธิบายเพิ่มเติม (ไม่บังคับ)..."
+                value={feedbackDetails}
+                onChange={(e) => setFeedbackDetails(e.target.value)}
+                style={{
+                  width: '100%', height: '80px', padding: '12px', borderRadius: '12px',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--surface-border)',
+                  color: 'var(--text-primary)', marginBottom: '24px', resize: 'none'
+                }}
+              />
+            )}
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button 
@@ -485,6 +501,7 @@ export default function ResultsView({ results, onClear }: { results: any, onClea
                     }).catch(() => {});
                   }
                   setShowFeedbackModal(false);
+                  setSubmittingFeedback(false);
                 }}
                 style={{ padding: '10px 20px', borderRadius: '12px', background: 'var(--primary-color)', border: 'none', color: 'white', cursor: 'pointer', fontWeight: 600 }}>
                 {submittingFeedback ? 'กำลังส่ง...' : 'ส่งข้อมูล'}
@@ -492,7 +509,7 @@ export default function ResultsView({ results, onClear }: { results: any, onClea
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </section>
   );
 }

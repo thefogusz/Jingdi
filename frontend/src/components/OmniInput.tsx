@@ -111,9 +111,9 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
   useEffect(() => {
     if (!loading) {
       if (files.length > 0 || text.trim().length > 0) {
-        setInputState('hasFile');
+        setInputState('hasFile'); // text or image present → detective cat typing
       } else if (isFocused) {
-        setInputState('hasFile'); // Treat focus directly as ready
+        setInputState('focused'); // just focused/clicked but empty → big detective cat with magnifier
       } else {
         setInputState('idle');
       }
@@ -127,6 +127,9 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
   if (catState === 'idle') {
     catSrc = "/cat-sleeping.png";
     catAnimClass = "cat-idle";
+  } else if (catState === 'focused') {
+    catSrc = "/detective-cat.png";
+    catAnimClass = "cat-show"; // big detective cat with magnifying glass
   } else if (catState === 'hasFile') {
     catSrc = "/detective-cat.png";
     catAnimClass = "cat-typing";
@@ -210,7 +213,12 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
             className="btn" 
             onClick={handleSubmit} 
             disabled={loading || (!text.trim() && files.length === 0)}
-            style={{ padding: '8px 20px', minWidth: loading ? '280px' : 'auto' }}
+            style={{ 
+              padding: '8px 20px', 
+              minWidth: loading ? '280px' : 'auto',
+              opacity: (loading || (!text.trim() && files.length === 0)) ? 0.5 : 1,
+              cursor: (loading || (!text.trim() && files.length === 0)) ? 'not-allowed' : 'pointer'
+            }}
           >
             {loading ? (
               <>

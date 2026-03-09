@@ -18,9 +18,20 @@ def init_db():
             latency_ms INTEGER,
             status TEXT,
             error_message TEXT,
-            estimated_cost_usd REAL
+            estimated_cost_usd REAL,
+            case_id TEXT,
+            api_name TEXT
         )
     ''')
+    # Migration: add case_id and api_name if they don't exist yet
+    try:
+        cursor.execute("ALTER TABLE api_logs ADD COLUMN case_id TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE api_logs ADD COLUMN api_name TEXT")
+    except Exception:
+        pass
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_feedback (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,15 +46,15 @@ def init_db():
     conn.commit()
     conn.close()
 
-def log_request(endpoint: str, query: str, latency_ms: int, status: str, error_message: str = "", cost: float = 0.0) -> int:
+def log_request(endpoint: str, query: str, latency_ms: int, status: str, error_message: str = "", cost: float = 0.0, case_id: str = None, api_name: str = None) -> int:
     try:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         timestamp = datetime.datetime.now().isoformat()
         cursor.execute('''
-            INSERT INTO api_logs (timestamp, endpoint, query, latency_ms, status, error_message, estimated_cost_usd)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (timestamp, endpoint, query, latency_ms, status, error_message, cost))
+            INSERT INTO api_logs (timestamp, endpoint, query, latency_ms, status, error_message, estimated_cost_usd, case_id, api_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name))
         log_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -88,6 +99,20 @@ def get_dashboard_stats():
         cursor.execute("SELECT timestamp, endpoint, error_message FROM api_logs WHERE status = 'error' ORDER BY id DESC LIMIT 5")
         recent_errors = [{"time": r[0], "endpoint": r[1], "error": r[2]} for r in cursor.fetchall()]
         
+        # API Usage Breakdown (by endpoint)
+        cursor.execute("SELECT endpoint, COUNT(*), SUM(estimated_cost_usd) FROM api_logs GROUP BY endpoint")
+        api_breakdown = [{"endpoint": r[0], "requests": r[1], "cost": round(float(r[2] or 0), 4)} for r in cursor.fetchall()]
+
+        # API Brand Totals (by api_name brand: Gemini, Grok, SerpApi)
+        cursor.execute("""
+            SELECT api_name, COUNT(*), SUM(estimated_cost_usd)
+            FROM api_logs
+            WHERE api_name IS NOT NULL AND api_name != ''
+            GROUP BY api_name
+            ORDER BY SUM(estimated_cost_usd) DESC
+        """)
+        api_brand_totals = [{"brand": r[0], "calls": r[1], "cost": round(float(r[2] or 0), 4)} for r in cursor.fetchall()]
+
         conn.close()
         
         return {
@@ -102,7 +127,10 @@ def get_dashboard_stats():
             },
             "kill_switch_active": get_kill_switch(),
             "recent_traffic": get_recent_traffic(),
-            "recent_feedback": get_recent_feedback()
+            "recent_feedback": get_recent_feedback(),
+            "api_breakdown": api_breakdown,
+            "api_brand_totals": api_brand_totals,
+            "cases": get_cases_api_breakdown()
         }
     except Exception as e:
         print(f"Stats error: {e}")
@@ -146,6 +174,7 @@ def get_recent_traffic(limit: int = 20):
         cursor.execute('''
             SELECT timestamp, endpoint, query, estimated_cost_usd, status
             FROM api_logs 
+            WHERE (case_id IS NULL OR case_id = '') AND (api_name IS NULL OR api_name = '')
             ORDER BY id DESC LIMIT ?
         ''', (limit,))
         
@@ -162,6 +191,57 @@ def get_recent_traffic(limit: int = 20):
         return traffic
     except Exception as e:
         print(f"Error fetching traffic: {e}")
+        return []
+
+
+def get_cases_api_breakdown(limit: int = 20):
+    """Return the most recent fact-check cases, each with the APIs called."""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        # Get the latest case IDs
+        cursor.execute('''
+            SELECT case_id, MIN(timestamp), MAX(timestamp), 
+                   SUM(estimated_cost_usd), 
+                   MAX(CASE WHEN status='success' THEN 1 ELSE 0 END),
+                   query
+            FROM api_logs
+            WHERE case_id IS NOT NULL AND case_id != ''
+            GROUP BY case_id
+            ORDER BY MIN(timestamp) DESC
+            LIMIT ?
+        ''', (limit,))
+        cases_raw = cursor.fetchall()
+        
+        cases = []
+        for row in cases_raw:
+            case_id, ts_start, ts_end, total_cost, succeeded, query = row
+            # Get individual API calls for this case
+            cursor.execute('''
+                SELECT api_name, status, estimated_cost_usd
+                FROM api_logs
+                WHERE case_id = ?
+                ORDER BY id ASC
+            ''', (case_id,))
+            apis = []
+            for api_row in cursor.fetchall():
+                apis.append({
+                    "name": api_row[0] or "Unknown",
+                    "status": api_row[1],
+                    "cost": round(float(api_row[2] or 0), 4)
+                })
+            cases.append({
+                "case_id": case_id,
+                "time": ts_start,
+                "query": query or "-",
+                "apis": apis,
+                "total_cost": round(float(total_cost or 0), 4),
+                "success": bool(succeeded)
+            })
+        conn.close()
+        return cases
+    except Exception as e:
+        print(f"Error fetching case breakdown: {e}")
         return []
 
 def set_kill_switch(active: bool):
