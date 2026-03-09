@@ -134,8 +134,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-      const res = await fetch(`http://${apiHost}:8000/api/admin/stats`, {
+      const res = await fetch(`/api/admin/stats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pw }),
@@ -186,8 +185,7 @@ export default function AdminDashboard() {
     setTogglingKillSwitch(true);
     try {
       const targetState = !stats.kill_switch_active;
-      const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-      const res = await fetch(`http://${apiHost}:8000/api/admin/toggle-killswitch`, {
+      const res = await fetch(`/api/admin/toggle-killswitch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pw, active: targetState }),
@@ -218,8 +216,7 @@ export default function AdminDashboard() {
     setChatLoading(true);
 
     try {
-      const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-      const res = await fetch(`http://${apiHost}:8000/api/admin/chat`, {
+      const res = await fetch(`/api/admin/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: pw, message: query }),

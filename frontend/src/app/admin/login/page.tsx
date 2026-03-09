@@ -17,7 +17,7 @@ export default function AdminLogin() {
 
     try {
       // Very basic check against backend to see if password is valid
-      const res = await fetch('http://localhost:8000/api/admin/stats', {
+      const res = await fetch('/api/admin/stats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),

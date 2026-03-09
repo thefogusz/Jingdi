@@ -336,8 +336,7 @@ export default function ResultsView({ results, onClear }: { results: any, onClea
             onClick={async () => {
               setFeedbackGiven('helpful');
               if (log_id) {
-                const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-                await fetch(`http://${apiHost}:8000/api/feedback`, {
+                await fetch(`/api/feedback`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ log_id, is_helpful: true })
@@ -493,8 +492,7 @@ export default function ResultsView({ results, onClear }: { results: any, onClea
                 onClick={async () => {
                   setSubmittingFeedback(true);
                   if (log_id) {
-                    const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-                    await fetch(`http://${apiHost}:8000/api/feedback`, {
+                    await fetch(`/api/feedback`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ log_id, is_helpful: false, reason: feedbackReason, details: feedbackDetails })

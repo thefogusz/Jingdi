@@ -46,9 +46,8 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
         const formData = new FormData();
         files.forEach(f => formData.append("files", f));
         
-        // Bypassing Next.js rewrite proxy because multipart/form-data often drops sockets
-        // sending directly to FastApi backend
-        const res = await fetch('http://127.0.0.1:8000/api/check-image', {
+        // Sending to Next.js proxy rewrite which routes to /api on backend
+        const res = await fetch('/api/check-image', {
           method: 'POST',
           body: formData
         });
@@ -62,10 +61,10 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
       } else {
         // Submit Text or URL
         const isUrl = text.trim().startsWith('http://') || text.trim().startsWith('https://');
-        const endpoint = isUrl ? 'http://127.0.0.1:8000/api/check-url' : 'http://127.0.0.1:8000/api/check-text';
+        const endpoint = isUrl ? '/api/check-url' : '/api/check-text';
         const body = isUrl ? { url: text.trim() } : { text: text.trim() };
 
-        // Bypassing Next.js rewrite proxy
+        // Using Next.js rewrite proxy
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
