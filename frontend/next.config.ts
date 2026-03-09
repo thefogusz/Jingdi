@@ -1,11 +1,17 @@
 import type { NextConfig } from "next";
 
+const backendUrl =
+  process.env.BACKEND_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://api.jingdi.online"
+    : "http://127.0.0.1:8000");
+
 const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: '/api/:path*',
-        destination: 'http://127.0.0.1:8000/api/:path*',
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },

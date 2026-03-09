@@ -161,6 +161,12 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
                     valid_sources.append(s)
             parsed["sources"] = valid_sources
             
+            try:
+                import database
+                database.log_request("[API] Gemini Text", text[:50], 0, "success", cost=0.0002)
+            except Exception:
+                pass
+                
             return parsed
         except Exception as e:
             error_msg = str(e)
@@ -270,6 +276,13 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
                 valid_sources.append(s)
                 
         parsed["sources"] = valid_sources
+        
+        try:
+            import database
+            database.log_request("[API] Grok 4.1 Reasoning", text[:50], 0, "success", cost=0.0005)
+        except Exception:
+            pass
+            
         return parsed
     except Exception as e:
         import traceback
@@ -382,6 +395,13 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "") -> 
             if isinstance(link, str) and verify_url(link): valid.append(s)
             elif "title" in s and "snippet" in s: s["link"] = ""; valid.append(s)
         parsed["sources"] = valid
+        
+        try:
+            import database
+            database.log_request("[API] Grok Vision", "Image processing", 0, "success", cost=0.0100)
+        except Exception:
+            pass
+            
         return parsed
     except Exception as e:
         try:

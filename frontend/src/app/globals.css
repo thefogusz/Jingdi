@@ -1,10 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  --bg-color: #080c14; /* Darker navy */
+  --bg-color: #080c14;
   --surface-color: rgba(255, 255, 255, 0.03);
   --surface-border: rgba(255, 255, 255, 0.08);
-  --primary-color: #2563eb; /* Bright blue from image */
+  --primary-color: #2563eb;
   --primary-hover: #1d4ed8;
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;

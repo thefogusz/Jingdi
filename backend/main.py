@@ -8,9 +8,20 @@ load_dotenv()
 app = FastAPI(title="Fake News Detection API")
 
 # Configure CORS for Next.js frontend
+_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://jingdi.online",
+    "https://www.jingdi.online",
+]
+# Allow extra origin from env (e.g. Vercel preview URLs)
+_extra_origin = os.getenv("FRONTEND_URL")
+if _extra_origin:
+    _cors_origins.append(_extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.1.235:3000"], 
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,12 +48,13 @@ import io
 import time
 import uuid
 import database
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from services.llm_service import analyze_text_claim, analyze_with_grok, analyze_image_fact_check, get_next_client
 from services.search_service import search_web, scrape_url
 from services.vision_service import analyze_images_with_vision
 from services.reverse_image_service import reverse_image_search, serpapi_google_lens
 from services.rss_service import search_rss_precheck
+from services.r2_service import upload_image, get_image_url
 from typing import List
 
 @app.get("/")
@@ -195,11 +207,7 @@ def check_url(request: UrlCheckRequest):
 def get_admin_image(filename: str):
     if not filename or ".." in filename or "/" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    
-    file_path = os.path.join("uploads", filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    raise HTTPException(status_code=404, detail="Image not found")
+    return RedirectResponse(url=get_image_url(filename))
 
 @app.post("/api/check-image")
 async def check_image(files: List[UploadFile] = File(...)):
@@ -209,11 +217,12 @@ async def check_image(files: List[UploadFile] = File(...)):
         start_time = time.time()
         contents = [await file.read() for file in files]
 
-        # Save first image temporarily for admin context
-        os.makedirs("uploads", exist_ok=True)
+        # Upload first image to Cloudflare R2
         img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
-        with open(os.path.join("uploads", img_filename), "wb") as f:
-            f.write(contents[0])
+        try:
+            upload_image(img_filename, contents[0])
+        except Exception as up_err:
+            print(f"[R2] Upload warning: {up_err}")
 
         # --- Step 1: Gemini Vision — OCR + visual indicators + English keywords (ONE call) ---
         database.log_request("[API] Gemini Vision", f"[Image] {img_filename}", 0, "info", cost=0.005, case_id=case_id, api_name="Gemini")
@@ -321,11 +330,12 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
     try:
         contents = [await file.read() for file in files]
         
-        # Save first image temporarily for admin context
-        os.makedirs("uploads", exist_ok=True)
+        # Upload first image to Cloudflare R2
         img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
-        with open(os.path.join("uploads", img_filename), "wb") as f:
-            f.write(contents[0])
+        try:
+            upload_image(img_filename, contents[0])
+        except Exception as up_err:
+            print(f"[R2] Upload warning: {up_err}")
 
         vision_result = analyze_images_with_vision(contents, is_screenshot=True)
         

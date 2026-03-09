@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jingdi_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/.env:/app/.env
+      - ./backend/stats.db:/app/stats.db
+      - ./backend/system_state.json:/app/system_state.json
+      - ./backend/error_log.txt:/app/error_log.txt
+    environment:
+      - TZ=Asia/Bangkok
+    networks:
+      - jingdi_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jingdi_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - TZ=Asia/Bangkok
+      # The frontend client browser needs to reach the backend
+      # Note: In production, this should be your actual domain (e.g. https://api.yourdomain.com)
+      - NEXT_PUBLIC_API_URL=http://localhost:8000 
+    depends_on:
+      - backend
+    networks:
+      - jingdi_network
+
+networks:
+  jingdi_network:
+    driver: bridge

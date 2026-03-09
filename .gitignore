@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 node_modules
 
 # Python virtual environment
@@ -33,3 +33,9 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Uploaded files (user data — do not commit)
+backend/uploads/
+
+# SQLite database (runtime state)
+backend/*.db
