@@ -1,0 +1,329 @@
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-color: #080c14; /* Darker navy */
+  --surface-color: rgba(255, 255, 255, 0.03);
+  --surface-border: rgba(255, 255, 255, 0.08);
+  --primary-color: #2563eb; /* Bright blue from image */
+  --primary-hover: #1d4ed8;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: 'Kanit', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Background animated gradient glow */
+body::before {
+  content: "";
+  position: fixed;
+  top: -10%;
+  left: -10%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.15) 0%, rgba(8, 12, 20, 0) 70%);
+  border-radius: 50%;
+  z-index: -1;
+  pointer-events: none;
+  animation: float 10s infinite alternate ease-in-out;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  bottom: -10%;
+  right: -10%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.08) 0%, rgba(8, 12, 20, 0) 70%);
+  border-radius: 50%;
+  z-index: -1;
+  pointer-events: none;
+  animation: float 12s infinite alternate-reverse ease-in-out;
+}
+
+@keyframes float {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(5%, 5%); }
+}
+
+.glass-panel {
+  background: var(--surface-color);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.btn {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: 'Kanit', sans-serif;
+}
+
+.btn:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.input, .textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 1rem;
+  font-family: 'Kanit', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.input:focus, .textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--surface-border);
+  padding-bottom: 12px;
+  overflow-x: auto;
+}
+
+.tab {
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  padding: 8px 16px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-family: 'Kanit', sans-serif;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab.active {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px var(--surface-border);
+}
+
+/* Utilities */
+.text-gradient {
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-secondary {
+  background: linear-gradient(135deg, #fb923c, #f43f5e);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.loader {
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-left-color: var(--text-primary);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(20px); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+.animate-slide-up {
+  animation: slideUpFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.3); }
+  70% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+
+/* --- Detective Cat Mascot Animations --- */
+.cat-mascot {
+  position: absolute;
+  z-index: -1; /* Keep strictly behind the text box */
+  transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.cat-idle {
+  opacity: 0.7; /* Keep it visible but slightly softer */
+  top: -90px; /* Lower it to sit right on the edge of the box */
+  right: -40px; 
+  width: 130px; /* Slightly smaller for idle state */
+  transform: rotate(15deg);
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)) brightness(0.9);
+  animation: idleSleep 6s infinite ease-in-out;
+}
+
+.cat-show {
+  opacity: 0.7;
+  top: -140px; 
+  right: 5%;
+  width: 220px;
+  transform: rotate(8deg);
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.8));
+  animation: floatCat 6s infinite ease-in-out;
+}
+
+.cat-typing {
+  opacity: 0.85; /* Not fully opaque to save text legibility */
+  top: -155px; 
+  right: 12%;
+  width: 240px;
+  transform: rotate(-3deg);
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.8));
+  animation: typeBop 2s infinite alternate ease-in-out; /* Slowed down significantly */
+}
+
+.cat-searching {
+  opacity: 0.8;
+  top: -160px;
+  right: 10%;
+  width: 230px;
+  transform: rotate(6deg);
+  filter: drop-shadow(0 12px 24px rgba(37,99,235,0.4));
+  animation: searchLook 4s infinite ease-in-out; /* Slowed down */
+}
+
+.cat-success {
+  opacity: 1;
+  top: -180px;
+  right: 15%;
+  width: 260px; /* Big and triumphant */
+  transform: rotate(-5deg);
+  filter: drop-shadow(0 16px 32px rgba(16,185,129,0.5)) brightness(1.1);
+  animation: happyHop 1.5s infinite ease-in-out;
+}
+
+.cat-fake {
+  opacity: 1;
+  top: -160px;
+  right: 8%;
+  width: 220px;
+  transform: rotate(15deg);
+  filter: drop-shadow(0 8px 16px rgba(239,68,68,0.5)) brightness(1);
+  animation: fakeShake 0.4s infinite alternate;
+}
+
+@keyframes idleSleep {
+  0%, 100% { transform: translateY(0) rotate(25deg) scaleY(1); }
+  50% { transform: translateY(10px) rotate(20deg) scaleY(0.95); } /* Squish a bit like breathing */
+}
+
+@keyframes floatCat {
+  0%, 100% { transform: translateY(0) rotate(8deg); }
+  50% { transform: translateY(-5px) rotate(11deg); }
+}
+
+@keyframes typeBop {
+  from { transform: translateY(0) rotate(-3deg); }
+  to { transform: translateY(6px) rotate(0deg); } /* Very subtle vertical bop */
+}
+
+@keyframes searchLook {
+  /* Extremely subtle sway */
+  0%, 100% { 
+    transform: translateY(0) translateX(0) rotate(6deg); 
+  }
+  50% {
+    transform: translateY(-3px) translateX(-5px) rotate(4deg); 
+  }
+}
+
+@keyframes happyHop {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  50% { transform: translateY(-20px) rotate(-10deg); }
+}
+
+@keyframes fakeShake {
+  from { transform: translateX(-4px) translateY(2px) rotate(15deg); }
+  to { transform: translateX(4px) translateY(-2px) rotate(13deg); }
+}
+
+/* --- Analysis Content Styling --- */
+.analysis-content strong {
+  color: #38bdf8; /* Bright cyan/blue text */
+  font-weight: 600;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+/* Detective Loader - persistent bounce wrapper (never resets on image swap) */
+.cat-bounce-wrapper {
+  animation: loaderBounce 1.4s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes loaderBounce {
+  0%   { transform: translateY(0px) rotate(-1deg) scale(1); }
+  50%  { transform: translateY(-12px) rotate(0.5deg) scale(1.03); }
+  100% { transform: translateY(0px) rotate(-1deg) scale(1); }
+}

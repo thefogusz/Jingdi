@@ -1,0 +1,37 @@
+{
+  "log_id": 48,
+  "score": 85,
+  "analysis": "**พบหลักฐานยืนยันจากหลายแหล่งข่าว** ว่ามี **CEO Starcloud** ประกาศแผนขุด **Bitcoin จากอวกาศ** จริง โดยวางแผนทดสอบดาวเทียมปีนี้\n- อ้างอิงจาก **SiamBlockchain** (16 ชม.ที่แล้ว), **MSN**, **Stocktwits**, **Phemex News** รายงานตรงกัน\n- **จากการค้นหาเว็บข่าวหลักและโซเชียล** พบข้อมูลสอดคล้อง ไม่ใช่ข่าวปลอม",
+  "claims_extracted": [
+    "CEO Starcloud ประกาศแผนขุด Bitcoin จากอวกาศ",
+    "เป็นแผนสุดบ้าที่ไม่เคยมีใครทำมาก่อน"
+  ],
+  "suspicious_words": [
+    "ขุด Bitcoin จากอวกาศ",
+    "แผนสุดบ้า",
+    "ไม่เคยมีใครทำมาก่อน"
+  ],
+  "sources": [
+    {
+      "title": "CEO Starcloud เตรียมขุด Bitcoin จากอวกาศ ไอเดียล้ำหรือแค่ฝัน?",
+      "snippet": "CEO ของ Starcloud ประกาศแผนขุด Bitcoin จากอวกาศ แนวคิดสุดล้ำที่จุดกระแสในวงการคริปโต",
+      "link": "https://siamblockchain.com/2026/03/08/starcloud-ceo-bitcoin-mining-space/"
+    },
+    {
+      "title": "Startup working on orbital data centers teases Bitcoin mining in space, too - MSN",
+      "snippet": "After proving it can run an Nvidia H100 GPU in orbit, US startup Starcloud plans to launch a dedicated bitcoin mining rig into space later this year.",
+      "link": "https://www.msn.com/en-us/news/technology/startup-working-on-orbital-data-centers-teases-bitcoin-mining-in-space-too/ar-AA1XHKBI"
+    },
+    {
+      "title": "Bitcoin Mining In Space? One Startup Plans Satellite Test - Stocktwits",
+      "snippet": "Starcloud CEO Philip Johnston said the company …",
+      "link": "https://stocktwits.com/news-articles/markets/cryptocurrency/startup-plans-first-bitcoin-mining-test-space/cZdliblRI4u"
+    },
+    {
+      "title": "Starcloud to Mine Bitcoin from Space | Phemex News",
+      "snippet": "Starcloud's CEO has unveiled an ambitious plan to mine Bitcoin from space",
+      "link": ""
+    }
+  ],
+  "visual_indicators": []
+}

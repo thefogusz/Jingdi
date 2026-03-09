@@ -1,0 +1,281 @@
+import os
+import requests
+from bs4 import BeautifulSoup
+from duckduckgo_search import DDGS
+from services.gemini_pool import get_next_client
+
+
+def _run_gemini(client, prompt: str) -> str:
+    """Run gemini with automatic flash-lite fallback on rate limit."""
+    try:
+        res = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+    except Exception as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            res = client.models.generate_content(model='gemini-2.5-flash-lite', contents=prompt)
+        else:
+            raise e
+    return res.text.strip().replace('"', '')
+
+
+def extract_keywords(query: str) -> str:
+    """Extract Thai-language search keywords (or mixed) from the query."""
+    if len(query) < 20:
+        return query
+    try:
+        client = get_next_client()
+        if not client:
+            return query[:50]
+        prompt = f"""Extract 3-4 highly specific search keywords from this text.
+        - If the text contains Thai names, locations, or organizations (like 'ตร.บาหลี', 'Bright TV'), KEEP them in Thai.
+        - DO NOT translate proper names or local events to English unless it's a globally dominant English topic.
+        - Text: '{query}'
+
+        Return ONLY the keywords separated by spaces."""
+        return _run_gemini(client, prompt)
+    except Exception:
+        return query[:50]
+
+
+def extract_english_keywords(query: str) -> str:
+    """Extract English-language search keywords for international coverage.
+    
+    Uses Gemini when available, with a reliable regex fallback that pulls
+    English words, company names, and tech terms directly from the query.
+    This is the key to finding international English sources from Thai headlines.
+    """
+    import re
+
+    # --- Regex fallback: always works, no Gemini needed ---
+    # Extract all English word sequences (catches: "Bitcoin", "Starcloud CEO", "SpaceX", etc.)
+    english_tokens = re.findall(r'[A-Za-z][A-Za-z0-9]+(?:\s+[A-Za-z][A-Za-z0-9]+)*', query)
+    regex_keywords = ' '.join(english_tokens[:6])  # first 6 tokens
+
+    if len(query) < 10:
+        return regex_keywords or query
+
+    try:
+        client = get_next_client()
+        if not client:
+            return regex_keywords or query[:50]
+        prompt = f"""Translate and extract 4-6 concise English search keywords from this text.
+        - Always output in English only.
+        - Extract proper nouns, company names, technical terms, and key concepts.
+        - Focus on making keywords that would find international news sources (CNN, BBC, Reuters, TechCrunch, PCMag etc.)
+        - Text: '{query}'
+
+        Return ONLY the English keywords separated by spaces."""
+        result = _run_gemini(client, prompt)
+        # Verify Gemini actually returned English (not Thai fallback)
+        english_chars = len(re.findall(r'[A-Za-z]', result))
+        thai_chars = len(re.findall(r'[\u0e00-\u0e7f]', result))
+        if thai_chars > english_chars:
+            # Gemini returned Thai - use regex fallback instead
+            return regex_keywords or result
+        return result
+    except Exception:
+        return regex_keywords  # Always return something useful
+
+
+
+def search_wikipedia(query: str) -> list:
+    """Fetch a quick summary from Wikipedia REST API for background context."""
+    try:
+        keywords = extract_keywords(query)
+        url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={keywords}&utf8=&format=json&srlimit=1"
+        res = requests.get(url, timeout=5)
+        data = res.json()
+        sources = []
+        if 'query' in data and data['query']['search']:
+            item = data['query']['search'][0]
+            clean_snippet = BeautifulSoup(item['snippet'], "html.parser").get_text()
+            sources.append({
+                "title": f"Wikipedia: {item['title']}",
+                "link": f"https://en.wikipedia.org/wiki/{item['title'].replace(' ', '_')}",
+                "snippet": clean_snippet
+            })
+        return sources
+    except Exception:
+        return []
+
+
+def search_google_news(query: str, lang: str = 'th', country: str = 'TH') -> list:
+    """Fetch the latest headlines from Google News RSS."""
+    try:
+        from urllib.parse import quote_plus
+        keywords = extract_keywords(query) if lang == 'th' else extract_english_keywords(query)
+        if not keywords:
+            return []
+        encoded_query = quote_plus(keywords)
+        ceid = f"{country}:{lang}"
+        url = f"https://news.google.com/rss/search?q={encoded_query}&hl={lang}&gl={country}&ceid={ceid}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        res = requests.get(url, headers=headers, timeout=5, verify=False)
+        soup = BeautifulSoup(res.content, "xml")
+        sources = []
+        items = soup.find_all("item", limit=3)
+        for item in items:
+            title = item.title.text if item.title else ""
+            link = item.link.text if item.link else ""
+            pub_date = item.pubDate.text if item.pubDate else ""
+            sources.append({
+                "title": f"ข่าวล่าสุด: {title}",
+                "link": link,
+                "snippet": f"รายงานเมื่อ: {pub_date}"
+            })
+        return sources
+    except Exception as e:
+        print(f"Google News RSS Error ({lang}): {e}")
+        return []
+
+
+def search_web(query: str) -> list:
+    """Search the web using Thai + English keywords in parallel for maximum coverage."""
+    try:
+        # Extract BOTH Thai and English keywords simultaneously
+        thai_keywords = extract_keywords(query)
+        english_keywords = extract_english_keywords(query)
+
+        # 0. Source-Aware Enhancement
+        known_sources = {
+            "bright tv": "site:brighttv.co.th",
+            "ไทยรัฐ": "site:thairath.co.th",
+            "thairath": "site:thairath.co.th",
+            "ข่าวสด": "site:khaosod.co.th",
+            "khaosod": "site:khaosod.co.th",
+            "มติชน": "site:matichon.co.th",
+            "matichon": "site:matichon.co.th",
+            "เดลินิวส์": "site:dailynews.co.th",
+            "dailynews": "site:dailynews.co.th",
+            "pptv": "site:pptvhd36.com"
+        }
+
+        target_site = ""
+        for name, site in known_sources.items():
+            if name in query.lower() or site.replace("site:", "") in query.lower():
+                target_site = site
+                break
+
+        if "facebook.com/share" in query.lower() or "fb.watch" in query.lower():
+            if not target_site:
+                thai_keywords = f"Facebook {thai_keywords}"
+
+        # 1. Wikipedia (global context)
+        sources = search_wikipedia(query)
+
+        # 2. Google News Thai
+        news_rss_th = search_google_news(query, lang='th', country='TH')
+        sources.extend([s for s in news_rss_th if not any(e['link'] == s['link'] for e in sources)])
+
+        # 2b. Google News English (catches international stories)
+        if english_keywords:
+            news_rss_en = search_google_news(query, lang='en', country='US')
+            sources.extend([s for s in news_rss_en if not any(e['link'] == s['link'] for e in sources)])
+
+        # 3. DuckDuckGo multi-stage
+        with DDGS() as ddgs:
+            seen_links = {s['link'] for s in sources}
+
+            # Stage 3.1: Targeted site search
+            if target_site:
+                try:
+                    site_results = list(ddgs.text(f"{target_site} {thai_keywords}", region='th-th', max_results=5))
+                    for item in site_results:
+                        link = item.get("url") or item.get("href", "")
+                        if link and link not in seen_links:
+                            sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
+                            seen_links.add(link)
+                except Exception:
+                    pass
+
+            # Stage 3.2: Thai-language search
+            try:
+                gen_results = list(ddgs.text(thai_keywords, region='th-th', max_results=8))
+                for item in gen_results:
+                    link = item.get("url") or item.get("href", "")
+                    if link and link not in seen_links:
+                        sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
+                        seen_links.add(link)
+            except Exception:
+                pass
+
+            # Stage 3.3: English global search (ALWAYS run for international coverage)
+            if english_keywords:
+                try:
+                    en_results = list(ddgs.text(english_keywords, region='wt-wt', max_results=8))
+                    for item in en_results:
+                        link = item.get("url") or item.get("href", "")
+                        if link and link not in seen_links:
+                            sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
+                            seen_links.add(link)
+                except Exception:
+                    pass
+
+            # Stage 3.4: Extra fallback if still low results
+            if len(sources) < 3:
+                try:
+                    fallback = list(ddgs.text(thai_keywords, max_results=5))
+                    for item in fallback:
+                        link = item.get("url") or item.get("href", "")
+                        if link and link not in seen_links:
+                            sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
+                            seen_links.add(link)
+                except Exception:
+                    pass
+
+        return sources[:15]
+    except Exception as e:
+        print(f"Search API Error: {e}")
+        return [{"title": "Search Failed", "link": "#", "snippet": str(e)}]
+
+
+def scrape_url(url: str) -> dict:
+    """Scrape basic text content from a URL.
+    
+    Improvements:
+    - Strips Facebook/tracking params (fbclid, aem_*, utm_*) before fetching
+      so JS-rendered pages like UNILAD resolve cleanly.
+    - Falls back to og:description meta tag when <p> body is empty
+      (common for JS-heavy sites like UNILAD, Reddit, etc.).
+    """
+    from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+
+    # --- Strip known tracking/redirect params ---
+    TRACKING_PARAMS = {"fbclid", "utm_source", "utm_medium", "utm_campaign",
+                       "utm_term", "utm_content", "ref", "_fb_noscript"}
+    try:
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query, keep_blank_values=True)
+        # Remove any param whose key starts with a tracking prefix OR is in the exact set
+        cleaned_qs = {k: v for k, v in qs.items()
+                      if k not in TRACKING_PARAMS and not k.startswith("aem_")}
+        cleaned_url = urlunparse(parsed._replace(query=urlencode(cleaned_qs, doseq=True)))
+    except Exception:
+        cleaned_url = url  # If parsing fails, use original
+
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        res = requests.get(cleaned_url, headers=headers, timeout=10)
+        res.raise_for_status()
+        soup = BeautifulSoup(res.text, 'html.parser')
+
+        # Primary title: <title> tag
+        title = soup.title.string.strip() if soup.title else ""
+
+        # Primary body: <p> tags
+        paragraphs = soup.find_all('p')
+        text = " ".join([p.get_text() for p in paragraphs]).strip()
+
+        # Fallback for JS-rendered sites: use OG meta tags
+        if len(text) < 100:
+            og_title = soup.find("meta", property="og:title")
+            og_desc = soup.find("meta", property="og:description")
+            if og_title and not title:
+                title = og_title.get("content", "").strip()
+            if og_desc:
+                og_text = og_desc.get("content", "").strip()
+                if og_text:
+                    text = og_text  # At minimum we have a summary for Grok to work with
+
+        return {"title": title, "text": text[:5000], "cleaned_url": cleaned_url}
+    except Exception as e:
+        return {"error": str(e), "text": "", "title": "", "cleaned_url": cleaned_url}

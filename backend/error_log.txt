@@ -1,0 +1,369 @@
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 241, in analyze_with_grok
+    response = grok_client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_utils\_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 1211, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'code': 'Client specified an invalid argument', 'error': 'Model not found: grok-beta'}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 177, in check_image
+    analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 273, in analyze_with_grok
+    traceback.print_exc()
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 44-60: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 44-46: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 44-51: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 44-53: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 44-53: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 45-53: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 44-46: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 372, in analyze_image_fact_check
+    print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 45-54: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 349, in analyze_image_fact_check
+    response = grok_client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_utils\_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 1211, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'code': 'Client specified an invalid argument', 'error': 'Invalid arguments passed to the model.'}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    import traceback; traceback.print_exc()
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 349, in analyze_image_fact_check
+    response = grok_client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_utils\_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 1211, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'code': 'Client specified an invalid argument', 'error': 'Invalid arguments passed to the model.'}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    print("Grok error:", str(e).encode('utf-8', errors='ignore').decode('utf-8'))
+                      ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 349, in analyze_image_fact_check
+    response = grok_client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_utils\_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 1211, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'code': 'Client specified an invalid argument', 'error': 'Invalid arguments passed to the model.'}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    if isinstance(link, str) and verify_url(link): valid.append(s)
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\services\llm_service.py", line 349, in analyze_image_fact_check
+    response = grok_client.chat.completions.create(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_utils\_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 1211, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\venv\Lib\site-packages\openai\_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'code': 'Client specified an invalid argument', 'error': 'Invalid arguments passed to the model.'}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\GUS\backend\main.py", line 194, in check_image
+    analysis_result = analyze_image_fact_check(contents, hint_context=hint)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GUS\backend\services\llm_service.py", line 382, in analyze_image_fact_check
+    if isinstance(link, str) and verify_url(link): valid.append(s)
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 180, in print_exc
+    print_exception(*sys.exc_info(), limit=limit, file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 125, in print_exception
+    te.print(file=file, chain=chain)
+  File "C:\Users\Gus\AppData\Local\Programs\Python\Python311\Lib\traceback.py", line 1022, in print
+    print(line, file=file, end="")
+OSError: [Errno 22] Invalid argument
+
