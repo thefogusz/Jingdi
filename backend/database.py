@@ -8,19 +8,30 @@ import psycopg2.extras
 
 DATABASE_URL = os.getenv("DATABASE_URL")  # Railway injects this automatically
 
+def _is_sqlite():
+    return not DATABASE_URL
+
 def _get_conn():
-    if not DATABASE_URL:
+    if _is_sqlite():
         # Fallback to sqlite if no Postgres URL is provided
         import sqlite3
         return sqlite3.connect("stats.db")
     
     return psycopg2.connect(DATABASE_URL)
 
+def _execute(cur, query: str, args=None):
+    if _is_sqlite():
+        query = query.replace('%s', '?').replace('SERIAL PRIMARY KEY', 'INTEGER PRIMARY KEY AUTOINCREMENT')
+    if args:
+        cur.execute(query, args)
+    else:
+        cur.execute(query)
+
 
 def init_db():
     conn = _get_conn()
     cur = conn.cursor()
-    cur.execute('''
+    _execute(cur, '''
         CREATE TABLE IF NOT EXISTS api_logs (
             id SERIAL PRIMARY KEY,
             timestamp TEXT,
@@ -34,7 +45,7 @@ def init_db():
             api_name TEXT
         )
     ''')
-    cur.execute('''
+    _execute(cur, '''
         CREATE TABLE IF NOT EXISTS user_feedback (
             id SERIAL PRIMARY KEY,
             log_id INTEGER,
@@ -45,7 +56,7 @@ def init_db():
             FOREIGN KEY(log_id) REFERENCES api_logs(id)
         )
     ''')
-    cur.execute('''
+    _execute(cur, '''
         CREATE TABLE IF NOT EXISTS system_state (
             key TEXT PRIMARY KEY,
             value TEXT
@@ -63,15 +74,22 @@ def log_request(endpoint: str, query: str, latency_ms: int, status: str,
         conn = _get_conn()
         cur = conn.cursor()
         timestamp = datetime.datetime.now().isoformat()
-        cur.execute('''
+        
+        query_str = '''
             INSERT INTO api_logs
                 (timestamp, endpoint, query, latency_ms, status, error_message,
                  estimated_cost_usd, case_id, api_name)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        ''', (timestamp, endpoint, query, latency_ms, status,
-              error_message, cost, case_id, api_name))
-        log_id = cur.fetchone()[0]
+        '''
+        
+        args = (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name)
+
+        if _is_sqlite():
+            _execute(cur, query_str, args)
+            log_id = cur.lastrowid
+        else:
+            _execute(cur, query_str + " RETURNING id", args)
+            log_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
         conn.close()
@@ -86,7 +104,7 @@ def save_feedback(log_id: int, is_helpful: bool, reason: str = "", details: str 
         conn = _get_conn()
         cur = conn.cursor()
         timestamp = datetime.datetime.now().isoformat()
-        cur.execute('''
+        _execute(cur, '''
             INSERT INTO user_feedback (log_id, is_helpful, reason, details, timestamp)
             VALUES (%s, %s, %s, %s, %s)
         ''', (log_id, is_helpful, reason, details, timestamp))
@@ -102,17 +120,17 @@ def get_dashboard_stats():
         conn = _get_conn()
         cur = conn.cursor()
 
-        cur.execute("SELECT COUNT(*) FROM api_logs WHERE status != 'info'")
+        _execute(cur, "SELECT COUNT(*) FROM api_logs WHERE status != 'info'")
         total_requests = cur.fetchone()[0]
 
-        cur.execute("SELECT SUM(estimated_cost_usd) FROM api_logs")
+        _execute(cur, "SELECT SUM(estimated_cost_usd) FROM api_logs")
         total_cost = cur.fetchone()[0] or 0.0
 
-        cur.execute("SELECT COUNT(*) FROM api_logs WHERE status = 'success'")
+        _execute(cur, "SELECT COUNT(*) FROM api_logs WHERE status = 'success'")
         success_count = cur.fetchone()[0]
         success_rate = (success_count / total_requests * 100) if total_requests > 0 else 100
 
-        cur.execute("""
+        _execute(cur, """
             SELECT timestamp, endpoint, error_message
             FROM api_logs WHERE status = 'error'
             ORDER BY id DESC LIMIT 5
@@ -120,7 +138,7 @@ def get_dashboard_stats():
         recent_errors = [{"time": r[0], "endpoint": r[1], "error": r[2]}
                          for r in cur.fetchall()]
 
-        cur.execute("""
+        _execute(cur, """
             SELECT endpoint, COUNT(*), SUM(estimated_cost_usd)
             FROM api_logs GROUP BY endpoint
         """)
@@ -129,7 +147,7 @@ def get_dashboard_stats():
             for r in cur.fetchall()
         ]
 
-        cur.execute("""
+        _execute(cur, """
             SELECT api_name, COUNT(*), SUM(estimated_cost_usd)
             FROM api_logs
             WHERE api_name IS NOT NULL AND api_name != ''
@@ -174,7 +192,7 @@ def get_recent_feedback(limit: int = 15):
     try:
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute('''
+        _execute(cur, '''
             SELECT f.timestamp, f.is_helpful, f.reason, f.details, a.query, a.endpoint
             FROM user_feedback f
             LEFT JOIN api_logs a ON f.log_id = a.id
@@ -199,7 +217,7 @@ def get_recent_traffic(limit: int = 20):
     try:
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute('''
+        _execute(cur, '''
             SELECT timestamp, endpoint, query, estimated_cost_usd, status
             FROM api_logs
             WHERE (case_id IS NULL OR case_id = '') AND (api_name IS NULL OR api_name = '')
@@ -225,7 +243,7 @@ def get_cases_api_breakdown(limit: int = 20):
     try:
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute('''
+        _execute(cur, '''
             SELECT case_id, MIN(timestamp), MAX(timestamp),
                    SUM(estimated_cost_usd),
                    MAX(CASE WHEN status='success' THEN 1 ELSE 0 END),
@@ -241,7 +259,7 @@ def get_cases_api_breakdown(limit: int = 20):
         cases = []
         for row in cases_raw:
             case_id, ts_start, ts_end, total_cost, succeeded, query = row
-            cur.execute('''
+            _execute(cur, '''
                 SELECT api_name, status, estimated_cost_usd
                 FROM api_logs WHERE case_id = %s ORDER BY id ASC
             ''', (case_id,))
@@ -268,7 +286,7 @@ def set_kill_switch(active: bool):
     try:
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute('''
+        _execute(cur, '''
             INSERT INTO system_state (key, value) VALUES ('kill_switch', %s)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
         ''', (json.dumps(active),))
@@ -283,7 +301,7 @@ def get_kill_switch() -> bool:
     try:
         conn = _get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT value FROM system_state WHERE key = 'kill_switch'")
+        _execute(cur, "SELECT value FROM system_state WHERE key = 'kill_switch'")
         row = cur.fetchone()
         cur.close()
         conn.close()
