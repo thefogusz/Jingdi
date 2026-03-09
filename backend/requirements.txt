@@ -9,4 +9,4 @@ boto3
 psycopg2-binary
 duckduckgo-search
 feedparser
-google-genai
+google-generativeai
