@@ -4,6 +4,6 @@
   "outputDirectory": ".next",
   "installCommand": "npm install",
   "env": {
-    "BACKEND_URL": "https://api.jingdi.online"
+    "BACKEND_URL": "https://jingdi.onrender.com"
   }
 }
