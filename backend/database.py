@@ -9,6 +9,11 @@ import psycopg2.extras
 DATABASE_URL = os.getenv("DATABASE_URL")  # Railway injects this automatically
 
 def _get_conn():
+    if not DATABASE_URL:
+        # Fallback to sqlite if no Postgres URL is provided
+        import sqlite3
+        return sqlite3.connect("stats.db")
+    
     return psycopg2.connect(DATABASE_URL)
 
 
@@ -288,4 +293,7 @@ def get_kill_switch() -> bool:
 
 
 # Initialize on import
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print(f"Failed to initialize database: {e}")

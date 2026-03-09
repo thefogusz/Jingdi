@@ -1,7 +1,7 @@
 import os
 import requests
 from bs4 import BeautifulSoup
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 from services.gemini_pool import get_next_client
 
 
