@@ -82,18 +82,19 @@ def get_dashboard_stats():
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         
-        # Total Requests
-        cursor.execute("SELECT COUNT(*) FROM api_logs")
+        # Total Requests (only real user-facing endpoint calls, exclude internal 'info' API steps)
+        cursor.execute("SELECT COUNT(*) FROM api_logs WHERE status != 'info'")
         total_requests = cursor.fetchone()[0]
         
         # Total Cost
         cursor.execute("SELECT SUM(estimated_cost_usd) FROM api_logs")
         total_cost = cursor.fetchone()[0] or 0.0
         
-        # Success Rate
+        # Success Rate (out of real endpoint calls only)
         cursor.execute("SELECT COUNT(*) FROM api_logs WHERE status = 'success'")
         success_count = cursor.fetchone()[0]
         success_rate = (success_count / total_requests * 100) if total_requests > 0 else 100
+
         
         # Recent Errors
         cursor.execute("SELECT timestamp, endpoint, error_message FROM api_logs WHERE status = 'error' ORDER BY id DESC LIMIT 5")
