@@ -272,8 +272,6 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
         </div>
       )}
 
-    </div>
-
       {/* Cloudflare Turnstile — hidden, auto-verifies silently */}
       <div
         ref={turnstileRef}
