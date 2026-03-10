@@ -151,7 +151,11 @@ async def check_text(request: TextCheckRequest):
             "analysis": analysis_result.get("analysis", "Unable to analyze text."),
             "claims_extracted": analysis_result.get("claims_extracted", []),
             "suspicious_words": analysis_result.get("suspicious_words", []),
+            "ai_signals": analysis_result.get("ai_signals", []),
+            "ai_confidence_score": analysis_result.get("ai_confidence_score", 0),
             "sources": analysis_result.get("sources", []),
+            "original_source": analysis_result.get("original_source", "Unknown/Social Media"),
+            "api_used": analysis_result.get("api_used", "Grok" if is_complex else "Gemini"),
             "visual_indicators": []
         }
     except Exception as e:
@@ -446,8 +450,12 @@ async def check_image(files: List[UploadFile] = File(...)):
             "score": analysis_result.get("score", vision_result.get("score", 50)),
             "analysis": analysis_result.get("analysis", vision_result.get("analysis", "")),
             "sources": grok_sources,
+            "original_source": analysis_result.get("original_source", "Unknown/Social Media"),
+            "ai_generated_signals": vision_result.get("ai_generated_signals", []) + analysis_result.get("ai_signals", []),
+            "ai_confidence_score": max(vision_result.get("ai_confidence_score", 0), analysis_result.get("ai_confidence_score", 0)),
             "visual_indicators": visual_indicators,
-            "extracted_text": extracted_text
+            "extracted_text": extracted_text,
+            "case_id": case_id
         }
     except Exception as e:
         import traceback

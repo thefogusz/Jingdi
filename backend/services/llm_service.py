@@ -81,6 +81,8 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
     prompt = f"""
     Current Date: {current_date} (พ.ศ. {current_year_th})
     
+    FORENSIC INSTRUCTION: Analyze the text and search context below. Prioritize finding the **ORIGIN** and checking **SOCIAL CONSENSUS** (what are people in the comments saying? are they debunking it?).
+    
     We are trying to verify the following text or claim:
     "{text}"
     
@@ -97,7 +99,8 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
     1. CONCISENESS: Keep the analysis extremely short and to the point. Use a maximum of 3-4 short bullet points. Give the user exactly what they need to know without fluff.
     2. NO URLS IN TEXT: DO NOT include raw URLs (http...) or markdown links (e.g., [Text](URL)) inside the `analysis` text. It looks messy. Rely entirely on the `sources` JSON array to provide links.
     3. Use **bold text** to highlight important names, dates, or keywords.
-    4. EVIDENCE OF SEARCH & MISSING DATA: If the provided search context does NOT contain enough information, or if you cannot verify the claim, you MUST explicitly state where you would logically look and that no data was found.
+    4. TRACING THE ORIGIN: You MUST try to identify the absolute first source of this news. Look for the earliest dates in the search results. State clearly if it originated from a specific social media user, a news site, or an official government source.
+    5. EVIDENCE OF SEARCH & MISSING DATA: If the provided search context does NOT contain enough information, or if you cannot verify the claim, you MUST explicitly state where you would logically look and that no data was found.
     5. SOURCES: **ABSOLUTELY NO HALLUCINATED URLs.** You MUST ONLY return the exact URLs explicitly provided in the `search_context`. Do not make up any domains, paths, or links. If there is no exact URL in the context, leave the `sources` array empty `[]`. Do NOT provide Google Search links.
     
     Provide a JSON response with the following keys:
@@ -105,6 +108,8 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
     - analysis: A clear, concise explanation in Thai. 
     - claims_extracted: A list of the main factual claims made in the text (in Thai).
     - suspicious_words: A list of emotionally manipulative or sensationalist words used in the text (in Thai).
+    - ai_signals: A list of keywords found in search results or comments indicating AI generation (e.g., 'Deepfake', 'AI-made', 'Stable Diffusion', 'Midjourney mention').
+    - ai_confidence_score: Integer 0 to 100 on the likelihood of the content being AI-generated.
     - sources: An array of source objects as described above.
     
     Return ONLY valid JSON.
@@ -226,7 +231,8 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     1. **IDENTIFY FIRST SOURCE**: Try to determine who posted this first. Look for timestamps or 'oldest' search results. Is it a credible news outlet or an anonymous social media user?
     2. **EVALUATE AUTHORITY**: If the source is an individual, are they a known influencer/authority or a random account? Check the 'weight' of the source.
     3. **CHECK CONSENSUS**: Is this story being reported across multiple independent, high-trust outlets? If only social media is talking about it, check the 'Consensus'—are people in comments calling it out or sharing it as fact? 
-    4. **CROSS-VERIFY IMAGE**: If image context (SerpApi/Lens) is provided, verify if the image is being used out of context (e.g. old photo used for new news).
+    4. **SOCIAL FEEDBACK & CONSENSUS**: Analyze social media snippets for community feedback. Do people in the comments shout "Fake!", "Old news!", or "This is from 2021!", or provide a "Link to the real story"? **Community consensus in comments is a high-value forensic clue.**
+    5. **CROSS-VERIFY IMAGE**: If image context (SerpApi/Lens) is provided, verify if the image is being used out of context (e.g. old photo used for new news).
     
     CRITICAL INSTRUCTION: Analyze the claim using ONLY the provided context and confirmed historical facts. 
     1. **TOPIC RELEVANCE CHECK**: Before analyzing, ask: "Do these search results talk about the SAME ACTION or EVENT as the claim?" (e.g. if the claim is about "withdrawing money", do NOT use search results about "interest rates" to debunk it).
@@ -240,6 +246,7 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     - CONCISENESS: Max 3-4 short bullet points.
     - NO URLS IN TEXT: Use the `sources` array for links.
     - Use **bold text** for names/dates.
+    - ORIGIN SECTION: Start your analysis by identifying the **ต้นตอ (Origin)** of the story. Who said it first? When? On which platform?
     - EXPLICIT CONCLUSION: Clearly state the level of trust and why.
     
     Provide a JSON response with the following keys:

@@ -21,6 +21,9 @@ VISION_PROMPT_TEMPLATE = (
     "- visual_indicators: A list of visual signals in Thai (e.g., logos, building names).\n"
     "- extracted_text: Readable text in the image (both Thai and English). BE EXTREMELY THOROUGH. Read every small character correctly.\n"
     "- text_clarity: 'high', 'low', or 'none'. Set to 'low' if text is blurry, handwritten, or partially obscured.\n"
+    "- ai_generated_signals: A list of potential AI-generated artifacts found (e.g., '6 fingers', 'smudged background', 'unnatural lighting', 'AI watermark', 'distorted text'). If none, return [].\n"
+    "- ai_confidence_score: Integer 0 to 100 representing how likely this image is AI-generated (0 = Real, 100 = Definitive AI).\n"
+    "- origin_clues: A list of clues that might point to the absolute original source (e.g., social media handles @username, specific news logos, timestamps in the image, or unique UI elements of a platform like Line, TikTok, or Facebook).\n"
     "- english_keywords: Array of 4-8 specific ENGLISH search terms. "
     "Focus on the EXACT core claim and any organizations or news outlets mentioned in the image.\n"
     "- is_global_story: true if the headline describes an international/scientific/foreign story.\n"
@@ -56,12 +59,14 @@ def _grok_vision_fallback(image_buffers: list, prompt: str) -> dict:
                     "content": (
                         "You are a highly accurate fact-checker. Respond with valid JSON only in this format: "
                         '{"score": 50, "analysis": "...", "visual_indicators": [], "extracted_text": "", '
+                        '"ai_generated_signals": [], "ai_confidence_score": 0, '
                         '"english_keywords": ["keyword1", "keyword2"], "is_global_story": true}'
                         "\n\nCRITICAL ARCHITECTURAL KNOWLEDGE: "
                         "\nThe 'King Power Mahanakhon' building in Bangkok has a unique 'pixelated' fragmented design. This is STYLISTIC ARCHITECTURE, not destruction."
                         "\n\nINSTRUCTION:"
                         "\n1. Read ALL text. State the core claim. Translate Thai headline to English search terms."
-                        "\n2. Be objective. Use neutral language."
+                        "\n2. Identify origin clues (handles @, logos, timestamps, platform UI)."
+                        "\n3. Be objective. Use neutral language."
                         "\nis_global_story: true if headline describes international/science/foreign story."
                     )
                 },

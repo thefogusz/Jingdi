@@ -26,10 +26,12 @@ def search_tavily(query: str, max_results: int = 10) -> list:
         data = res.json()
         results = []
         for item in data.get("results", []):
+            pub_date = item.get("published_date", "")
             results.append({
                 "title": item.get("title", ""),
                 "link": item.get("url", ""),
                 "snippet": item.get("content", "")[:300],
+                "pub_date": pub_date
             })
         print(f"[Tavily] Found {len(results)} results for: {query[:60]}")
         return results
@@ -172,13 +174,38 @@ def _search_ddg(query: str, region: str = 'wt-wt', max_results: int = 10) -> lis
                 {
                     "title": item.get("title", ""),
                     "link": item.get("url") or item.get("href", ""),
-                    "snippet": item.get("body", "")
+                    "snippet": item.get("body", ""),
+                    "pub_date": item.get("published", "") # DDG sometimes provides this
                 }
                 for item in results
             ]
     except Exception as e:
         print(f"[DDG] Error ({region}): {e}")
         return []
+
+def search_social_context(query: str) -> list:
+    """Search social media platforms (Reddit, X, FB, TikTok) for free using DDG site operators."""
+    platforms = ["reddit.com", "x.com", "facebook.com", "tiktok.com"]
+    social_results = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        # We search with "comments" or "replies" to trigger discussion-heavy results
+        futures = {
+            executor.submit(_search_ddg, f"{query} (comments OR replies OR discussion) site:{platform}", 'wt-wt', 5): platform
+            for platform in platforms
+        }
+        
+        for future in concurrent.futures.as_completed(futures):
+            platform = futures[future]
+            try:
+                results = future.result()
+                for item in results:
+                    item["source_platform"] = platform
+                    social_results.append(item)
+            except Exception as e:
+                print(f"[Social Search] Error for {platform}: {e}")
+                
+    return social_results
 
 def search_web(query: str) -> list:
     """Search the web using Thai + English keywords in parallel across multiple engines (Tavily + DDG)."""
@@ -234,6 +261,9 @@ def search_web(query: str) -> list:
             futures[executor.submit(_search_ddg, ddg_thai_query, 'th-th', 10)] = "DDG-TH"
             if english_keywords:
                 futures[executor.submit(_search_ddg, english_keywords, 'wt-wt', 10)] = "DDG-EN"
+            
+            # C) Social Media Context (Free)
+            futures[executor.submit(search_social_context, thai_keywords)] = "Social-TH"
 
             # Collect results as they arrive
             for future in concurrent.futures.as_completed(futures):

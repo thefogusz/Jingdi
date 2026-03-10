@@ -174,7 +174,8 @@ def _build_summary(keywords: list, is_global: bool, pages: list, search_query: s
         parts.append(f'\n📰 DuckDuckGo image search found {len(pages)} page(s) using similar images:')
         for i, p in enumerate(pages[:6], 1):
             title = p.get("title") or p["url"]
-            parts.append(f'   {i}. [{title}]({p["url"]})')
+            date_info = f" [{p['pub_date']}]" if p.get("pub_date") else ""
+            parts.append(f'   {i}. [{title}]({p["url"]}){date_info}')
     else:
         parts.append("\n⚠️ No URL matches found via DuckDuckGo image search.")
 

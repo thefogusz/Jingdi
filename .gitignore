@@ -1,4 +1,4 @@
-node_modules/
+การดึงข้อมูลจากโซเชียลตรงๆ (Social Context)node_modules/
 node_modules
 
 # Python virtual environment
@@ -39,3 +39,4 @@ backend/uploads/
 
 # SQLite database (runtime state)
 backend/*.db
+.vercel
