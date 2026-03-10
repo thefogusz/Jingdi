@@ -703,7 +703,7 @@ The user is the Administrator. Answer their question based on the stats in infor
         if gemini_client:
             gemini_prompt = f"{system_prompt}\n\nคำถามของแอดมิน: {req.message}"
             gem_response = gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-2.0-flash',
                 contents=gemini_prompt,
                 config=genai_types.GenerateContentConfig(temperature=0.3),
             )

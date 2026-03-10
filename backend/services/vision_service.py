@@ -21,7 +21,8 @@ VISION_PROMPT_TEMPLATE = (
     "- visual_indicators: A list of visual signals in Thai (e.g., logos, building names).\n"
     "- extracted_text: Readable text in the image (both Thai and English). BE EXTREMELY THOROUGH. Read every small character correctly.\n"
     "- text_clarity: 'high', 'low', or 'none'. Set to 'low' if text is blurry, handwritten, or partially obscured.\n"
-    "- english_keywords: Array of 4-8 specific ENGLISH search terms. INCLUDE SOURCES (e.g. 'efinanceThai TV') and ACTIONS (e.g. 'withdraw normally') found in text. Focus on the EXACT news post.\n"
+    "- english_keywords: Array of 4-8 specific ENGLISH search terms. "
+    "Focus on the EXACT core claim and any organizations or news outlets mentioned in the image.\n"
     "- is_global_story: true if the headline describes an international/scientific/foreign story.\n"
 )
 
@@ -119,7 +120,7 @@ def analyze_images_with_vision(image_buffers: list, is_screenshot: bool = False)
         try:
             try:
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-2.0-flash',
                     contents=[prompt, *images],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
@@ -129,7 +130,7 @@ def analyze_images_with_vision(image_buffers: list, is_screenshot: bool = False)
             except Exception as inner_e:
                 if "429" in str(inner_e) or "RESOURCE_EXHAUSTED" in str(inner_e):
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash-lite',
+                        model='gemini-1.5-flash',
                         contents=[prompt, *images],
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",

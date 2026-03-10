@@ -124,7 +124,7 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
         try:
             try:
                 response = gemini_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-2.0-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
@@ -133,9 +133,9 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
                 )
             except Exception as inner_e:
                 if "429" in str(inner_e) or "RESOURCE_EXHAUSTED" in str(inner_e):
-                    # Fallback to lite version if 2.5-flash daily limit is hit
+                    # Fallback to lite version if 2.0-flash daily limit is hit
                     response = gemini_client.models.generate_content(
-                        model='gemini-2.5-flash-lite',
+                        model='gemini-1.5-flash',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",

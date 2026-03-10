@@ -42,10 +42,10 @@ def search_tavily(query: str, max_results: int = 10) -> list:
 def _run_gemini(client, prompt: str) -> str:
     """Run gemini with automatic flash-lite fallback on rate limit."""
     try:
-        res = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        res = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
     except Exception as e:
         if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            res = client.models.generate_content(model='gemini-2.5-flash-lite', contents=prompt)
+            res = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
         else:
             raise e
     return res.text.strip().replace('"', '')
@@ -162,8 +162,26 @@ def search_google_news(query: str, lang: str = 'th', country: str = 'TH') -> lis
         return []
 
 
+def _search_ddg(query: str, region: str = 'wt-wt', max_results: int = 10) -> list:
+    """Helper to run DuckDuckGo search in a thread."""
+    try:
+        from ddgs import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, region=region, max_results=max_results))
+            return [
+                {
+                    "title": item.get("title", ""),
+                    "link": item.get("url") or item.get("href", ""),
+                    "snippet": item.get("body", "")
+                }
+                for item in results
+            ]
+    except Exception as e:
+        print(f"[DDG] Error ({region}): {e}")
+        return []
+
 def search_web(query: str) -> list:
-    """Search the web using Thai + English keywords in parallel for maximum coverage."""
+    """Search the web using Thai + English keywords in parallel across multiple engines (Tavily + DDG)."""
     try:
         # Extract BOTH Thai and English keywords simultaneously
         thai_keywords = extract_keywords(query)
@@ -189,79 +207,46 @@ def search_web(query: str) -> list:
                 target_site = site
                 break
 
-        if "facebook.com/share" in query.lower() or "fb.watch" in query.lower():
-            if not target_site:
-                thai_keywords = f"Facebook {thai_keywords}"
-
-        # 1. Wikipedia (global context)
+        # 1. Start with Wikipedia & News (Fast pre-checks)
         sources = search_wikipedia(query)
-
-        # 2. Google News Thai
+        
         news_rss_th = search_google_news(query, lang='th', country='TH')
-        sources.extend([s for s in news_rss_th if not any(e['link'] == s['link'] for e in sources)])
+        sources.extend(news_rss_th)
 
-        # 2b. Google News English (catches international stories)
         if english_keywords:
             news_rss_en = search_google_news(query, lang='en', country='US')
-            sources.extend([s for s in news_rss_en if not any(e['link'] == s['link'] for e in sources)])
+            sources.extend(news_rss_en)
 
-        # 3. Tavily AI Search (Primary) — Thai & English in PARALLEL
         seen_links = {s['link'] for s in sources}
 
-        if TAVILY_API_KEY:
-            futures_map = {}
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                futures_map['th'] = executor.submit(search_tavily, thai_keywords, 6)
+        # 2. Parallel AI Search (Tavily) + Privacy Search (DuckDuckGo)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {}
+            
+            # A) Tavily AI Search
+            if TAVILY_API_KEY:
+                futures[executor.submit(search_tavily, thai_keywords, 8)] = "Tavily-TH"
                 if english_keywords:
-                    futures_map['en'] = executor.submit(search_tavily, english_keywords, 6)
+                    futures[executor.submit(search_tavily, english_keywords, 8)] = "Tavily-EN"
+            
+            # B) DuckDuckGo (Free/Scraped)
+            ddg_thai_query = f"{target_site} {thai_keywords}" if target_site else thai_keywords
+            futures[executor.submit(_search_ddg, ddg_thai_query, 'th-th', 10)] = "DDG-TH"
+            if english_keywords:
+                futures[executor.submit(_search_ddg, english_keywords, 'wt-wt', 10)] = "DDG-EN"
 
-            for key, future in futures_map.items():
+            # Collect results as they arrive
+            for future in concurrent.futures.as_completed(futures):
+                name = futures[future]
                 try:
-                    for item in future.result(timeout=12):
-                        if item["link"] and item["link"] not in seen_links:
+                    results = future.result(timeout=10)
+                    for item in results:
+                        link = item.get("link")
+                        if link and link not in seen_links:
                             sources.append(item)
-                            seen_links.add(item["link"])
+                            seen_links.add(link)
                 except Exception as e:
-                    print(f"[Tavily/{key}] Error: {e}")
-
-        # Fallback: DuckDuckGo if Tavily key not set OR Tavily returned nothing
-        if not TAVILY_API_KEY or len(sources) < 3:
-            try:
-                from ddgs import DDGS
-                with DDGS() as ddgs:
-                    if target_site:
-                        try:
-                            site_results = list(ddgs.text(f"{target_site} {thai_keywords}", region='th-th', max_results=5))
-                            for item in site_results:
-                                link = item.get("url") or item.get("href", "")
-                                if link and link not in seen_links:
-                                    sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
-                                    seen_links.add(link)
-                        except Exception:
-                            pass
-
-                    try:
-                        gen_results = list(ddgs.text(thai_keywords, region='th-th', max_results=8))
-                        for item in gen_results:
-                            link = item.get("url") or item.get("href", "")
-                            if link and link not in seen_links:
-                                sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
-                                seen_links.add(link)
-                    except Exception:
-                        pass
-
-                    if english_keywords:
-                        try:
-                            en_results = list(ddgs.text(english_keywords, region='wt-wt', max_results=8))
-                            for item in en_results:
-                                link = item.get("url") or item.get("href", "")
-                                if link and link not in seen_links:
-                                    sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
-                                    seen_links.add(link)
-                        except Exception:
-                            pass
-            except Exception as e:
-                print(f"[DDG Fallback] Error: {e}")
+                    print(f"[{name}] Task error: {e}")
 
         return sources[:15]
     except Exception as e:
