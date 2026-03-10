@@ -252,14 +252,27 @@ async def check_image(files: List[UploadFile] = File(...)):
         except Exception as up_err:
             print(f"[R2] Upload warning: {up_err}")
 
-        # --- Step 1: Gemini Vision — OCR + visual indicators + English keywords (ONE call) ---
+        # --- Step 1: Vision Phase (Multi-Agent OCR + indicators) ---
         database.log_request("[API] Gemini Vision", f"[Image] {img_filename}", 0, "info", cost=0.005, case_id=case_id, api_name="Gemini")
         vision_result    = analyze_images_with_vision(contents, is_screenshot=False)
         extracted_text   = vision_result.get("extracted_text", "")
         visual_indicators= vision_result.get("visual_indicators", [])
-        # Gemini Vision now also returns English keywords and global flag in same response
         eng_keywords     = vision_result.get("english_keywords", [])
         is_global        = vision_result.get("is_global_story", False)
+        text_clarity     = vision_result.get("text_clarity", "high")
+
+        # --- Step 1b: Forensic Cross-Check (If text is low clarity or missing) ---
+        # If Gemini struggled, we ask Grok Vision for a second opinion
+        if text_clarity == 'low' or not extracted_text:
+            print(f"[main] Low text clarity detected ({text_clarity}). Triggering Grok Vision cross-check...")
+            try:
+                grok_vision = analyze_image_fact_check(contents, hint_context=f"Gemini extracted: {extracted_text}")
+                if grok_vision.get("extracted_text"):
+                    # Use a combination of both for safety
+                    extracted_text = f"{extracted_text} | Cross-check: {grok_vision.get('extracted_text')}"
+                    eng_keywords = list(set(eng_keywords + grok_vision.get("search_query_used", "").split()))
+            except Exception as e:
+                print(f"[main] Grok Vision cross-check error: {e}")
 
         # --- Step 1b: DDG Image Search using Gemini keywords (no second Gemini call) ---
         rev_search = {"pages": [], "summary": "", "search_query": ""}
@@ -290,12 +303,14 @@ async def check_image(files: List[UploadFile] = File(...)):
             search_context = search_web(text_search_query)
 
         # --- Step 2b: Proactive SerpApi Google Lens (Image Origin Discovery) ---
-        # Immediate fallback if global story, or no normal search results found
+        # Immediate fallback if global story, no normal search results found, or text is unclear/none
         serpapi_sources = []
-        proactive_trigger = is_global or not search_context
+        # AGGRESSIVE FORENSIC TRIGGER: If text is missing or messy, reverse search is our ONLY hope for provenance.
+        proactive_trigger = is_global or not search_context or text_clarity in ['low', 'none'] or not extracted_text
         
         if proactive_trigger:
-            print(f"[main] Proactive SerpApi trigger (is_global={is_global}, search_context_empty={not search_context})")
+            reason = "global" if is_global else "no_context" if not search_context else "unclear_text"
+            print(f"[main] Proactive SerpApi trigger (reason={reason})")
             try:
                 if public_img_url:
                     database.log_request("[API] SerpApi Google Lens", f"[Proactive Origin Search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")

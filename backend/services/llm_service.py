@@ -213,27 +213,34 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     
     prompt = f"""
     Current Date: {current_date} (พ.ศ. {current_year_th})
-    Analyze the following text or claim for potential misinformation:
+    Analyze the following text or claim using a **Digital Forensics** approach:
     "{text}"
     
-    Below is the web search context we found so far regarding this claim:
+    Below is the web search and image provenance context found:
     ---
     {search_context if search_context else "No search context provided."}
     ---
     
-    CRITICAL INSTRUCTION: Analyze the claim using ONLY the provided search context and your internal knowledge of confirmed historical facts. 
-    1. STRICT ADHERENCE: You MUST stay 100% on-topic to the specific claim provided in the "text" field. If the claim is about "Best City", do NOT talk about "City Collapsing" or "Disasters" unless the search results explicitly link them.
-    2. NO HALLUCINATION: NEVER invent events, dates, or citations. Do not claim "CBS News" or "Wikipedia" reported something unless you see that exact link and text in the provided context. If you hallucinate fake news to debunk other news, you have failed.
-    3. SEARCH BREADTH: If the context is empty, simply state that no evidence was found. Never guess.
-    4. OBJECTIVITY: Do not be biased towards finding "Fake News". If a claim is just a positive prediction or a generic statement, treat it as such.
+    ROLE: You are a Digital Forensic Investigator. Your goal is to identify the **ORIGIN (Provenance)** and **CREDIBILITY** of this story.
     
-    TONE & STYLE INSTRUCTION: Write the `analysis` section in simple, everyday Thai language (ภาษาชาวบ้าน เข้าใจง่าย กระชับ). Avoid overly academic or confusing legal/technical jargon. 
+    FORENSIC STEPS:
+    1. **IDENTIFY FIRST SOURCE**: Try to determine who posted this first. Look for timestamps or 'oldest' search results. Is it a credible news outlet or an anonymous social media user?
+    2. **EVALUATE AUTHORITY**: If the source is an individual, are they a known influencer/authority or a random account? Check the 'weight' of the source.
+    3. **CHECK CONSENSUS**: Is this story being reported across multiple independent, high-trust outlets? If only social media is talking about it, check the 'Consensus'—are people in comments calling it out or sharing it as fact? 
+    4. **CROSS-VERIFY IMAGE**: If image context (SerpApi/Lens) is provided, verify if the image is being used out of context (e.g. old photo used for new news).
     
-    CRITICAL FORMATTING INSTRUCTION: You MUST format the `analysis` text logically using Markdown. 
-    1. CONCISENESS: Keep the analysis extremely short and to the point. Use a maximum of 3-4 short bullet points. Give the user exactly what they need to know without fluff.
-    2. NO URLS IN TEXT: DO NOT include raw URLs (http...) or markdown links (e.g., [Text](URL)) inside the `analysis` text. It looks messy. Rely entirely on the `sources` JSON array to provide links.
-    3. Use **bold text** to highlight important names, dates, or keywords.
-    4. EVIDENCE OF SEARCH & MISSING DATA: Explicitly state what you searched for. If you cannot find evidence, state: "**จากการตรวจสอบข้ามแหล่งข้อมูลบนโซเชียลมีเดียและเว็บไซต์ข่าวหลัก** ไม่พบรายงานหรือข้อมูลที่ยืนยันเรื่องนี้ได้"
+    CRITICAL INSTRUCTION: Analyze the claim using ONLY the provided context and confirmed historical facts. 
+    1. STRICT ADHERENCE: Stay 100% on-topic. If the claim is positive, don't invent disasters to debunk it.
+    2. NO HALLUCINATION: NEVER invent events, dates, or citations. If you find no evidence, state it clearly.
+    3. OBJECTIVITY: Do not bias towards finding "Fake News". 
+    
+    TONE & STYLE INSTRUCTION: Write the `analysis` section in professional but simple Thai. Focus on the word "**ต้นตอ**" (Origin) and "**ความน่าเชื่อถือ**" (Credibility).
+    
+    CRITICAL FORMATTING INSTRUCTION: 
+    - CONCISENESS: Max 3-4 short bullet points.
+    - NO URLS IN TEXT: Use the `sources` array for links.
+    - Use **bold text** for names/dates.
+    - EXPLICIT CONCLUSION: Clearly state the level of trust and why.
     
     Provide a JSON response with the following keys:
     - score: An integer from 0 to 100 where 0 is definitively disproven misinformation and 100 is highly credible with evidence. Use scores like 40-60 if no evidence is found either way.
@@ -342,15 +349,14 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "") -> 
         "Thai news graphics often use a clickbait background photo. The real story is in the TEXT OVERLAY.\n"
         "Read the main HEADLINE text — that is what the story is actually about.\n\n"
         "STEP 2 — TRANSLATE THAI TEXT & SEARCH:\n"
-        "Translate the Thai headline to English accurately.\n"
-        "KEY TERMS: หมึกมหึมา = colossal squid (Mesonychoteuthis hamiltoni). "
-        "ปลาหมึกยักษ์ = giant squid (Architeuthis dux). These are DIFFERENT SPECIES.\n"
+        "Translate the Thai headline to English accurately. Be literal but correct.\n"
         "Use your English translation as the search query to find the original news source.\n\n"
         "STEP 3 — FIND & VERIFY ORIGINAL SOURCE:\n"
-        "Which outlet FIRST published this? Is it credible? Multiple sources confirm same facts?\n\n"
-        "STEP 4 — CHECK CLAIM ACCURACY:\n"
+        "Which outlet FIRST published this? Is it credible? Multiple sources confirm same facts?\n"
+        "If it's architectural (e.g. King Power Mahanakhon), recognize it's a design, not a disaster.\n\n"
+        "STEP 4 — CHECK CLAIM ACCURACY & SOCIAL CONTEXT:\n"
         "Does the Thai caption accurately represent the original story?\n"
-        "Was the image used out of context?\n\n"
+        "Was the image used out of context? If only social media is posting, analyze the sentiment.\n\n"
         "TONE: Simple conversational Thai.\n"
         "FORMAT: Max 3-4 bullet points. NO raw URLs in analysis. **Bold** key names.\n"
         "YOU MUST include your intermediate steps in the JSON so I can verify your work:\n"
