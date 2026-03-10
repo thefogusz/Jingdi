@@ -264,7 +264,21 @@ async def check_image(files: List[UploadFile] = File(...)):
     try:
         check_kill_switch()
         start_time = time.time()
+        
+        # Guard: Max 3 files, 10MB each
+        MAX_FILES = 3
+        MAX_SIZE_MB = 10
+        MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
+        if len(files) > MAX_FILES:
+            raise HTTPException(status_code=400, detail=f"อัปโหลดได้สูงสุด {MAX_FILES} รูปต่อครั้ง")
         contents = [await file.read() for file in files]
+        for i, (file, content) in enumerate(zip(files, contents)):
+            if len(content) > MAX_SIZE_BYTES:
+                size_mb = len(content) / (1024 * 1024)
+                raise HTTPException(status_code=413, detail=f"ไฟล์ '{file.filename}' มีขนาด {size_mb:.1f}MB เกินขนาดสูงสุดที่อนุญาต ({MAX_SIZE_MB}MB)")
+            allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+            if file.content_type and file.content_type not in allowed_types:
+                raise HTTPException(status_code=415, detail=f"ไฟล์ '{file.filename}' ไม่ใช่รูปภาพที่รองรับ (รองรับ JPG, PNG, WEBP, GIF เท่านั้น)")
 
         # Upload first image to Cloudflare R2
         img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
@@ -411,7 +425,17 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
     check_kill_switch()
     start_time = time.time()
     try:
+        # Guard: Max 3 files, 10MB each
+        MAX_FILES = 3
+        MAX_SIZE_MB = 10
+        MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
+        if len(files) > MAX_FILES:
+            raise HTTPException(status_code=400, detail=f"อัปโหลดได้สูงสุด {MAX_FILES} รูปต่อครั้ง")
         contents = [await file.read() for file in files]
+        for file, content in zip(files, contents):
+            if len(content) > MAX_SIZE_BYTES:
+                size_mb = len(content) / (1024 * 1024)
+                raise HTTPException(status_code=413, detail=f"ไฟล์ '{file.filename}' มีขนาด {size_mb:.1f}MB เกินขนาดสูงสุดที่อนุญาต ({MAX_SIZE_MB}MB)")
         
         # Upload first image to Cloudflare R2
         img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
