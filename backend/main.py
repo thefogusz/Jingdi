@@ -265,23 +265,30 @@ async def get_admin_image(filename: str):
     print(f"[AdminImage] Proxying {filename} from {target_url}")
     
     try:
-        # Using a single-use session for simplicity in this endpoint
         async with aiohttp.ClientSession() as session:
             async with session.get(target_url, timeout=10) as resp:
                 if resp.status != 200:
-                    print(f"[AdminImage] Error fetching from R2: {resp.status}")
-                    raise HTTPException(status_code=resp.status, detail=f"Image not found on R2 (Status {resp.status})")
+                    print(f"[AdminImage] Error: R2 returned status {resp.status} for {filename}")
+                    # If it's a 404/403, don't bother redirecting, it will fail there too
+                    if resp.status in [403, 404]:
+                        raise HTTPException(status_code=resp.status, detail=f"Image {resp.status}")
+                    raise Exception(f"R2 status {resp.status}")
                 
                 content = await resp.read()
                 content_type = resp.headers.get("Content-Type", "image/jpeg")
                 return Response(
                     content=content, 
                     media_type=content_type,
-                    headers={"Cache-Control": "public, max-age=3600"}
+                    headers={
+                        "Cache-Control": "public, max-age=86400",
+                        "Access-Control-Allow-Origin": "*"
+                    }
                 )
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"[AdminImage] Proxy error: {str(e)}")
-        # If proxy fails, try one last time with a redirect as fallback
+        print(f"[AdminImage] Proxy failure for {filename}: {str(e)}")
+        # Fallback to redirect only for non-404 errors (like timeouts or connection issues)
         return RedirectResponse(url=target_url)
 
 @app.post("/api/check-image")

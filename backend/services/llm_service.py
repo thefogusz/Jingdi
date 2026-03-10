@@ -316,7 +316,7 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
         }
 
 
-def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "") -> dict:
+def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "", log_filename: str = "") -> dict:
     '''Send images directly to Grok Vision + web search for one-shot fact-checking.
     Grok sees the actual image, reads Thai text itself, generates its own keywords,
     and searches the web. Bypasses the unreliable OCR pipeline.'''
@@ -407,7 +407,8 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "") -> 
         
         try:
             import database
-            database.log_request("[API] Grok Vision", "Image processing", 0, "success", cost=0.0100)
+            log_entry = f"Image processing ({log_filename})" if log_filename else "Image processing"
+            database.log_request("[API] Grok Vision", log_entry, 0, "success", cost=0.0100)
         except Exception:
             pass
             
