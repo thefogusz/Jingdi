@@ -82,26 +82,54 @@ def serpapi_google_lens(image_url: str) -> list[dict]:
         
         if response.status_code == 200:
             data = response.json()
+            
+            # --- 1. Visual Matches (Existing) ---
             matches = data.get("visual_matches", [])
             print(f"[SerpApi] Found {len(matches)} visual matches")
-            
             for match in matches:
-                # Basic sanitation
                 link = match.get("link")
                 title = match.get("title")
-                snippet = match.get("source") # sometimes source name is more useful
-                
+                snippet = match.get("source")
                 if link and title and link not in seen_urls:
                     seen_urls.add(link)
                     results.append({
                         "title": title,
                         "link": link,
                         "snippet": f"Potentially found on: {snippet}" if snippet else "Visual match from Google Lens",
-                        "source": "Google Lens (Original Source Discovery)"
+                        "source": "Google Lens (Visual Match)"
                     })
-                    
-                    if len(results) >= 15: # Cap to 15 results
-                        break
+                    if len(results) >= 15: break
+
+            # --- 2. Related Searches (Critical for identifying the event/story) ---
+            related_queries = data.get("search_queries", [])
+            if related_queries:
+                print(f"[SerpApi] Found {len(related_queries)} related search queries")
+                for q in related_queries:
+                    text = q.get("title")
+                    if text:
+                        results.append({
+                            "title": f"Related Search: {text}",
+                            "link": f"https://www.google.com/search?q={text}",
+                            "snippet": "Google Lens identified this phrase as highly relevant to the image content.",
+                            "source": "Google Lens (Inferred Identity)"
+                        })
+
+            # --- 3. Knowledge Graph (Identifies people, places, things) ---
+            kg = data.get("knowledge_graph", [])
+            if kg:
+                print(f"[SerpApi] Found knowledge graph data")
+                for item in kg:
+                    title = item.get("title")
+                    subtitle = item.get("subtitle")
+                    link = item.get("link")
+                    if title:
+                        results.append({
+                            "title": f"Entity: {title} ({subtitle or 'Known Identity'})",
+                            "link": link or "N/A",
+                            "snippet": f"Identified by Google Lens Knowledge Graph.",
+                            "source": "Google Lens (Knowledge Graph)"
+                        })
+
         else:
             print(f"[SerpApi] Error status {response.status_code}: {response.text[:200]}")
             
