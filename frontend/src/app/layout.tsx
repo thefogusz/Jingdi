@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "JingDi - AI ตรวจสอบข่าวปลอม",
   description: "ระบบ AI ตรวจสอบข่าวปลอม ข่าวจริง วิเคราะห์ภาพและข้อความด้วย Gemini และ Grok",
+  icons: {
+    icon: '/icon.png',
+  },
 };
 
 export default function RootLayout({

@@ -324,10 +324,14 @@ async def check_image(files: List[UploadFile] = File(...)):
             content_type = files[0].content_type or "image/jpeg"
             public_img_url = upload_image(img_filename, contents[0], content_type=content_type)
         except Exception as up_err:
-            print(f"[R2] Upload warning: {up_err}")
+            print(f"[R2] Upload error: {up_err}")
+            public_img_url = None
 
-        # --- Step 1: Vision Phase (Multi-Agent OCR + indicators) ---
-        database.log_request("[API] Gemini Vision", f"[Image Forensic] ({img_filename})", 0, "info", cost=0.005, case_id=case_id, api_name="Gemini")
+        if public_img_url:
+            query_display = f"[Image Upload] ({img_filename})"
+        else:
+            query_display = f"[Image Upload FAILED] {files[0].filename}"
+            public_img_url = None
         vision_result    = analyze_images_with_vision(contents, is_screenshot=False)
         extracted_text   = vision_result.get("extracted_text", "")
         visual_indicators= vision_result.get("visual_indicators", [])
@@ -481,12 +485,18 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
             ext = files[0].filename.split(".")[-1].lower()
             
         img_filename = f"{uuid.uuid4().hex[:12]}.{ext}"
+        upload_success = False
         try:
             content_type = files[0].content_type or "image/jpeg"
             upload_image(img_filename, contents[0], content_type=content_type)
+            upload_success = True
         except Exception as up_err:
-            print(f"[R2] Upload warning: {up_err}")
+            print(f"[R2] Upload error: {up_err}")
 
+        if upload_success:
+            query_display = f"[Screenshot Upload] ({img_filename})"
+        else:
+            query_display = f"[Screenshot Upload FAILED] {files[0].filename}"
         vision_result = analyze_images_with_vision(contents, is_screenshot=True)
         
         extracted_text = vision_result.get("extracted_text", "")

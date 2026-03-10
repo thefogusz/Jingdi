@@ -170,7 +170,8 @@ def get_dashboard_stats():
             "system_health": {
                 "database": "Healthy",
                 "gemini_api": "Healthy" if success_rate > 80 else "Degraded",
-                "web_search": "Healthy"
+                "web_search": "Healthy",
+                "r2_storage": "Healthy" if os.getenv("R2_ACCESS_KEY_ID") else "Not Configured"
             },
             "kill_switch_active": get_kill_switch(),
             "recent_traffic": get_recent_traffic(),

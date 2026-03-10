@@ -147,6 +147,7 @@ function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size
           src={imgUrl} 
           className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative`} 
           alt={`Image: ${filename}`} 
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
       </a>
     </div>
