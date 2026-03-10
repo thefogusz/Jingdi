@@ -636,14 +636,16 @@ async def serve_admin_image(filename: str):
     """Proxy image from R2/S3 to avoid CORS/access issues in admin dashboard."""
     public_url = os.getenv("R2_PUBLIC_URL")
     if not public_url:
-        raise HTTPException(status_code=500, detail="R2_PUBLIC_URL not configured")
+        # Instead of 500, return 404 with info
+        print("[AdminImage] ERROR: R2_PUBLIC_URL is not set!")
+        return Response(status_code=404, content="R2_PUBLIC_URL not configured on server")
     
     url = f"{public_url.rstrip('/')}/{filename}"
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
+            async with session.get(url, timeout=10) as resp:
                 if resp.status != 200:
-                    return Response(status_code=resp.status, content="Image not found")
+                    return Response(status_code=resp.status, content=f"Image fetch failed: {resp.status}")
                 
                 content = await resp.read()
                 return Response(
@@ -652,7 +654,7 @@ async def serve_admin_image(filename: str):
                     headers={"Cache-Control": "public, max-age=3600"}
                 )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return Response(status_code=502, content=f"Proxy error: {str(e)}")
 
 @app.post("/api/admin/chat")
 async def admin_chat(req: ChatRequest):
