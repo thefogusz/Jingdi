@@ -25,9 +25,7 @@ import {
 
 // Interfaces for our data
 interface SystemHealth {
-  database: string;
-  gemini_api: string;
-  web_search: string;
+  [key: string]: string;
 }
 
 interface RecentError {
@@ -87,6 +85,8 @@ interface DashboardStats {
   api_brand_totals?: BrandTotal[];
   cases?: CaseRecord[];
   r2_public_url?: string;
+  r2_bucket?: string;
+  r2_account_prefix?: string;
 }
 
 // Brand color config
