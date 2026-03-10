@@ -274,24 +274,44 @@ async def check_image(files: List[UploadFile] = File(...)):
         # Combine reverse image sources
         combined_rev_pages = rev_pages.copy() if isinstance(rev_pages, list) else []
 
-        # --- Step 2: Build DuckDuckGo text search context ---
-        # Use Gemini Vision's English keywords as primary query — far more accurate than Thai OCR caption
+        # --- Step 2: Search Context (Tavily/DDG) ---
+        # Use Gemini Vision's English keywords as primary query for text search
+        text_search_query = ""
         if eng_keywords:
-            search_query = " ".join(eng_keywords[:6])
+            text_search_query = " ".join(eng_keywords[:6])
             if extracted_text:
-                search_query += " " + extracted_text
+                text_search_query += " " + extracted_text
         else:
-            search_query = extracted_text
+            text_search_query = extracted_text
 
-        search_context = search_web(search_query) if search_query.strip() else []
+        search_context = []
+        if text_search_query.strip():
+            # search_web internally uses Tavily as primary, DDG as fallback
+            search_context = search_web(text_search_query)
+
+        # --- Step 2b: Proactive SerpApi Google Lens (Image Origin Discovery) ---
+        # Immediate fallback if global story, or no normal search results found
+        serpapi_sources = []
+        proactive_trigger = is_global or not search_context
         
+        if proactive_trigger:
+            print(f"[main] Proactive SerpApi trigger (is_global={is_global}, search_context_empty={not search_context})")
+            try:
+                if public_img_url:
+                    database.log_request("[API] SerpApi Google Lens", f"[Proactive Origin Search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
+                    serpapi_sources = serpapi_google_lens(public_img_url)
+                    if serpapi_sources:
+                        search_context.append({"title": "🔍 ORIGINAL SOURCE DISCOVERY (Google Lens)", "snippet": str(serpapi_sources[:5]), "url": "google-lens-check"})
+                        combined_rev_pages = serpapi_sources + combined_rev_pages
+            except Exception as e:
+                print(f"[main] Proactive SerpApi error: {e}")
+
         # Tier 0: RSS Pre-Check for Images
         rss_matches = search_rss_precheck(extracted_text, " ".join(eng_keywords))
         if rss_matches:
              search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
 
-        # --- Step 3 & 4: Grok Text Analysis via Gemini Extractions ---
-        # Since xAI API key doesn't support grok-vision, we rely on Gemini to read the image
+        # --- Step 3 & 4: Grok Text Analysis ---
         text_for_grok = f"Headline/Text extracted from image: {extracted_text}"
         if eng_keywords:
             text_for_grok += f" | Key concepts extracted: {', '.join(eng_keywords)}"
@@ -299,30 +319,23 @@ async def check_image(files: List[UploadFile] = File(...)):
         database.log_request("[API] Grok 4.1 Reasoning", f"[Image analysis] {extracted_text[:60]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")            
         analysis_result = analyze_with_grok(text_for_grok, str(search_context))
 
-        # --- LAST RESORT: SerpApi Google Lens ---
+        # --- FINAL FALLBACK: Inconclusive result check ---
         score = analysis_result.get("score", 50)
         grok_sources = analysis_result.get("sources", [])
-        serpapi_sources = []
 
-        if (40 < score < 60) or not grok_sources:
-            print("[main] Inconclusive image result. Searching SerpApi Google Lens as last resort...")
+        # If still inconclusive AND we haven't run SerpApi yet, run it now
+        if (40 < score < 60 or not grok_sources) and not serpapi_sources:
+            print("[main] Still inconclusive. Searching SerpApi Google Lens as last resort...")
             try:
-                if contents:
-                    database.log_request("[API] SerpApi Google Lens", f"[Image reverse search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
-                    if public_img_url:
-                        serpapi_sources = serpapi_google_lens(public_img_url)
-                    else:
-                        print("[main] Skipping SerpApi because R2 URL is missing.")
-                        serpapi_sources = []
-                        
+                if public_img_url:
+                    database.log_request("[API] SerpApi Google Lens", f"[Fallback Origin Search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
+                    serpapi_sources = serpapi_google_lens(public_img_url)
                     if serpapi_sources:
-                        search_context.append({"title": "Google Lens Visual Matches", "snippet": str(serpapi_sources), "url": "reverse-image-search"})
-                        # Re-run Grok with the new visual matches context
+                        search_context.append({"title": "🔍 LATE SOURCE DISCOVERY (Google Lens)", "snippet": str(serpapi_sources[:5]), "url": "google-lens-check"})
                         analysis_result = analyze_with_grok(text_for_grok, str(search_context))
-                        grok_sources = analysis_result.get("sources", [])
                         combined_rev_pages = serpapi_sources + combined_rev_pages
             except Exception as e:
-                print(f"[main] SerpApi integration error: {e}")
+                print(f"[main] Fallback SerpApi error: {e}")
 
         # Supplement sources with reverse-image pages if Grok found none
         grok_sources = analysis_result.get("sources", [])

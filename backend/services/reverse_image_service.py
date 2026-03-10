@@ -96,8 +96,8 @@ def serpapi_google_lens(image_url: str) -> list[dict]:
                     results.append({
                         "title": title,
                         "link": link,
-                        "snippet": f"Source: {snippet}" if snippet else "Google Lens Visual Match",
-                        "source": "SerpApi Google Lens"
+                        "snippet": f"Potentially found on: {snippet}" if snippet else "Visual match from Google Lens",
+                        "source": "Google Lens (Original Source Discovery)"
                     })
                     
                     if len(results) >= 15: # Cap to 15 results
