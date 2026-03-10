@@ -86,6 +86,7 @@ interface DashboardStats {
   api_breakdown?: any[];
   api_brand_totals?: BrandTotal[];
   cases?: CaseRecord[];
+  r2_public_url?: string;
 }
 
 // Brand color config
@@ -109,11 +110,12 @@ function BrandBadge({ name }: { name: string }) {
   );
 }
 
-function QueryThumbnail({ query, size = "md" }: { query: string, size?: "sm" | "md" | "lg" }) {
+function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size?: "sm" | "md" | "lg", r2BaseUrl?: string }) {
   const m = query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
   if (!m) return <span className="truncate flex-1">{query}</span>;
 
   const filename = m[1];
+  const imgUrl = r2BaseUrl ? `${r2BaseUrl}/${filename}` : `/api/admin/image/${filename}`;
   const cleanText = query
     .replace(m[0], '')
     .replace('Headline/Text extracted from image:', '')
@@ -140,9 +142,9 @@ function QueryThumbnail({ query, size = "md" }: { query: string, size?: "sm" | "
       <span className="truncate text-neutral-400 text-[10px] bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
         {cleanText || 'Image'}
       </span>
-      <a href={`/api/admin/image/${filename}`} target="_blank" rel="noopener noreferrer" className="shrink-0 group/img relative" title={`View original: ${filename}`}>
+      <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 group/img relative" title={`View original: ${filename}`}>
         <img 
-          src={`/api/admin/image/${filename}`} 
+          src={imgUrl} 
           className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative`} 
           alt={`Image: ${filename}`} 
         />
@@ -477,7 +479,7 @@ export default function AdminDashboard() {
                     )}
                     <div className="mt-3 text-xs text-neutral-500 font-mono truncate pt-3 border-t border-white/5 flex items-center group-hover:text-neutral-400 transition-colors">
                       <span className="text-neutral-500 mr-2 font-sans font-medium">{fb.endpoint.replace('/api/', '')}</span>
-                      <QueryThumbnail query={fb.query} size="sm" />
+                      <QueryThumbnail query={fb.query} size="sm" r2BaseUrl={stats?.r2_public_url} />
                     </div>
                   </div>
                 ))}
@@ -518,7 +520,7 @@ export default function AdminDashboard() {
                           {request.endpoint.replace('/api/', '')}
                         </td>
                         <td className="px-5 py-4 max-w-xs text-neutral-300">
-                          <QueryThumbnail query={request.query} size="md" />
+                          <QueryThumbnail query={request.query} size="md" r2BaseUrl={stats?.r2_public_url} />
                         </td>
                         <td className="px-5 py-4 font-mono text-[11px] text-emerald-400/80 group-hover:text-emerald-400 text-right transition-colors">
                           ${request.cost.toFixed(4)}
@@ -571,7 +573,7 @@ export default function AdminDashboard() {
                           {new Date(c.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </td>
                         <td className="px-4 py-3">
-                           <QueryThumbnail query={c.query} size="sm" />
+                           <QueryThumbnail query={c.query} size="sm" r2BaseUrl={stats?.r2_public_url} />
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">

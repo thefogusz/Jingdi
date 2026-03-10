@@ -177,7 +177,8 @@ def get_dashboard_stats():
             "recent_feedback": get_recent_feedback(),
             "api_breakdown": api_breakdown,
             "api_brand_totals": api_brand_totals,
-            "cases": get_cases_api_breakdown()
+            "cases": get_cases_api_breakdown(),
+            "r2_public_url": os.getenv("R2_PUBLIC_URL", "").rstrip("/")
         }
     except Exception as e:
         print(f"Stats error: {e}")
