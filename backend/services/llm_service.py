@@ -8,7 +8,6 @@ from google import genai
 from google.genai import types
 from openai import OpenAI
 
-from openai import OpenAI
 from .gemini_pool import get_next_client
 import requests
 import urllib3
@@ -396,7 +395,8 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "") -> 
         if response_text.endswith("```"):
             response_text = response_text[:-3]
         parsed = json.loads(response_text.strip())
-        print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\nTRANS: {parsed.get('translated_text')}\nQUERY: {parsed.get('search_query_used')}\n-----------------------------\n")
+        # avoid printing complex Thai chars to Windows console to prevent encoding errors
+        # print(f"\n--- GROK FACT-CHECK DEBUG ---\nEXTRACTED: {parsed.get('extracted_text')}\n...")
         valid = []
         for s in parsed.get("sources", []):
             if not isinstance(s, dict): continue

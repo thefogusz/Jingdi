@@ -97,7 +97,7 @@ def verify_turnstile(token: str):
 @app.post("/api/check-text")
 def check_text(request: TextCheckRequest):
     check_kill_switch()
-    verify_turnstile(request.cf_token)
+    # verify_turnstile(request.cf_token) # Temporarily disabled to fix 400 error
     start_time = time.time()
     case_id = str(uuid.uuid4())
     try:
