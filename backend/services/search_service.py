@@ -1,5 +1,6 @@
 import os
 import requests
+import concurrent.futures
 from bs4 import BeautifulSoup
 from services.gemini_pool import get_next_client
 
@@ -204,25 +205,24 @@ def search_web(query: str) -> list:
             news_rss_en = search_google_news(query, lang='en', country='US')
             sources.extend([s for s in news_rss_en if not any(e['link'] == s['link'] for e in sources)])
 
-        # 3. Tavily AI Search (Primary) — falls back to DDGS if no API key
+        # 3. Tavily AI Search (Primary) — Thai & English in PARALLEL
         seen_links = {s['link'] for s in sources}
 
-        tavily_results = []
         if TAVILY_API_KEY:
-            # 3.1: Thai search via Tavily
-            tavily_th = search_tavily(thai_keywords, max_results=8)
-            for item in tavily_th:
-                if item["link"] and item["link"] not in seen_links:
-                    sources.append(item)
-                    seen_links.add(item["link"])
+            futures_map = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                futures_map['th'] = executor.submit(search_tavily, thai_keywords, 6)
+                if english_keywords:
+                    futures_map['en'] = executor.submit(search_tavily, english_keywords, 6)
 
-            # 3.2: English search via Tavily
-            if english_keywords:
-                tavily_en = search_tavily(english_keywords, max_results=8)
-                for item in tavily_en:
-                    if item["link"] and item["link"] not in seen_links:
-                        sources.append(item)
-                        seen_links.add(item["link"])
+            for key, future in futures_map.items():
+                try:
+                    for item in future.result(timeout=12):
+                        if item["link"] and item["link"] not in seen_links:
+                            sources.append(item)
+                            seen_links.add(item["link"])
+                except Exception as e:
+                    print(f"[Tavily/{key}] Error: {e}")
 
         # Fallback: DuckDuckGo if Tavily key not set OR Tavily returned nothing
         if not TAVILY_API_KEY or len(sources) < 3:

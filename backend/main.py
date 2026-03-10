@@ -1,4 +1,5 @@
 import os
+import asyncio
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -95,30 +96,49 @@ def verify_turnstile(token: str):
         print(f"[Turnstile] Verification error (allowing through): {e}")
 
 @app.post("/api/check-text")
-def check_text(request: TextCheckRequest):
+async def check_text(request: TextCheckRequest):
     check_kill_switch()
     # verify_turnstile(request.cf_token) # Temporarily disabled to fix 400 error
     start_time = time.time()
     case_id = str(uuid.uuid4())
     try:
-        # Tier 0: RSS Pre-Check
+        # Tier 0 & 1: Concurrent RSS Pre-Check & Web Search
         from services.search_service import extract_keywords
         keywords = extract_keywords(request.text)
-        rss_matches = search_rss_precheck(request.text, keywords)
         
-        # Tier 1: Free Search + Gemini
-        search_context = search_web(request.text)
+        loop = asyncio.get_running_loop()
+        rss_task = loop.run_in_executor(None, search_rss_precheck, request.text, keywords)
+        web_task = loop.run_in_executor(None, search_web, request.text)
+        
+        rss_matches, search_context = await asyncio.gather(rss_task, web_task)
+        
         if rss_matches:
              search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
-             
-        database.log_request("[API] Gemini Text", request.text[:100], 0, "info", cost=0.0002, case_id=case_id, api_name="Gemini")
-        analysis_result = analyze_text_claim(request.text, search_context=search_context)
-        score = analysis_result.get("score", 50)
         
-        # Tier 2: Escalate to Grok if inconclusive, no sources, or Gemini failed (skip_to_grok)
-        if (40 < score < 60) or not analysis_result.get("sources") or analysis_result.get("skip_to_grok"):
-            database.log_request("[API] Grok 4.1 Reasoning", request.text[:100], 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
-            analysis_result = analyze_with_grok(request.text, search_context=search_context)
+        # Smart Tier Routing: Detect complex inputs upfront — skip Gemini for complex cases
+        text = request.text
+        is_complex = (
+            len(text) > 600 or                            # Long text → Grok
+            text.count('\n') > 4 or                       # Multi-paragraph
+            text.count('http') > 0 or                     # Contains URL
+            any(w in text.lower() for w in ['สลิป', 'โอน', 'บัญชี', 'ดาวน์โหลด', 'ลงทะเบียน'])  # Finance/scam keywords → Grok
+        )
+        
+        if is_complex:
+            # Tier 2 Direct: Skip Gemini, go straight to Grok
+            database.log_request("[API] Grok 4.1 Reasoning", text[:100], 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
+            analysis_result = analyze_with_grok(text, search_context=search_context)
+        else:
+            # Tier 1: Gemini (fast, cheap for simple claims)
+            database.log_request("[API] Gemini Text", text[:100], 0, "info", cost=0.0002, case_id=case_id, api_name="Gemini")
+            analysis_result = analyze_text_claim(text, search_context=search_context)
+            score = analysis_result.get("score", 50)
+            
+            # Escalate to Grok only if Gemini is genuinely inconclusive
+            if (40 < score < 60) or not analysis_result.get("sources") or analysis_result.get("skip_to_grok"):
+                database.log_request("[API] Grok 4.1 Reasoning", text[:100], 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
+                analysis_result = analyze_with_grok(text, search_context=search_context)
+
             
         latency = int((time.time() - start_time) * 1000)
         log_id = database.log_request("/api/check-text", request.text[:100], latency, "success", cost=0.0001, case_id=case_id)
@@ -234,7 +254,9 @@ def check_url(request: UrlCheckRequest):
 def get_admin_image(filename: str):
     if not filename or ".." in filename or "/" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    return RedirectResponse(url=get_image_url(filename))
+    target_url = get_image_url(filename)
+    print(f"[AdminImage] Redirecting {filename} -> {target_url}")
+    return RedirectResponse(url=target_url)
 
 @app.post("/api/check-image")
 async def check_image(files: List[UploadFile] = File(...)):
@@ -253,7 +275,7 @@ async def check_image(files: List[UploadFile] = File(...)):
             print(f"[R2] Upload warning: {up_err}")
 
         # --- Step 1: Vision Phase (Multi-Agent OCR + indicators) ---
-        database.log_request("[API] Gemini Vision", f"[Image] {img_filename}", 0, "info", cost=0.005, case_id=case_id, api_name="Gemini")
+        database.log_request("[API] Gemini Vision", f"[Image Forensic] ({img_filename})", 0, "info", cost=0.005, case_id=case_id, api_name="Gemini")
         vision_result    = analyze_images_with_vision(contents, is_screenshot=False)
         extracted_text   = vision_result.get("extracted_text", "")
         visual_indicators= vision_result.get("visual_indicators", [])
@@ -313,7 +335,7 @@ async def check_image(files: List[UploadFile] = File(...)):
             print(f"[main] Proactive SerpApi trigger (reason={reason})")
             try:
                 if public_img_url:
-                    database.log_request("[API] SerpApi Google Lens", f"[Proactive Origin Search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
+                    database.log_request("[API] SerpApi Google Lens", f"[Proactive Origin Search] ({img_filename})", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
                     serpapi_sources = serpapi_google_lens(public_img_url)
                     if serpapi_sources:
                         search_context.append({"title": "🔍 ORIGINAL SOURCE DISCOVERY (Google Lens)", "snippet": str(serpapi_sources[:5]), "url": "google-lens-check"})
@@ -331,7 +353,7 @@ async def check_image(files: List[UploadFile] = File(...)):
         if eng_keywords:
             text_for_grok += f" | Key concepts extracted: {', '.join(eng_keywords)}"
 
-        database.log_request("[API] Grok 4.1 Reasoning", f"[Image analysis] {extracted_text[:60]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")            
+        database.log_request("[API] Grok 4.1 Reasoning", f"Headline/Text extracted from image: ({img_filename}) {extracted_text[:60]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")            
         analysis_result = analyze_with_grok(text_for_grok, str(search_context))
 
         # --- FINAL FALLBACK: Inconclusive result check ---
@@ -343,7 +365,7 @@ async def check_image(files: List[UploadFile] = File(...)):
             print("[main] Still inconclusive. Searching SerpApi Google Lens as last resort...")
             try:
                 if public_img_url:
-                    database.log_request("[API] SerpApi Google Lens", f"[Fallback Origin Search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
+                    database.log_request("[API] SerpApi Google Lens", f"[Fallback Origin Search] ({img_filename})", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
                     serpapi_sources = serpapi_google_lens(public_img_url)
                     if serpapi_sources:
                         search_context.append({"title": "🔍 LATE SOURCE DISCOVERY (Google Lens)", "snippet": str(serpapi_sources[:5]), "url": "google-lens-check"})
@@ -361,7 +383,7 @@ async def check_image(files: List[UploadFile] = File(...)):
             ]
 
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-image", f"[Image Upload] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
+        log_id = database.log_request("/api/check-image", f"[Image Upload] ({img_filename})", latency, "success", cost=0.005, case_id=case_id)
 
         return {
             "log_id": log_id,
