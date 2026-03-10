@@ -56,23 +56,20 @@ def ddg_image_search(query: str) -> list:
         
 import base64
 
-def serpapi_google_lens(image_bytes: bytes) -> list[dict]:
+def serpapi_google_lens(image_url: str) -> list[dict]:
     """
     Perform a reverse image search using SerpApi Google Lens engine.
-    Encodes the image_bytes to base64 Data URI to avoid needing a public URL.
+    Uses the R2 public URL for the image instead of base64 to avoid URI length errors.
     Returns a list of dictionaries with 'title', 'link', and 'snippet'.
     """
-    if not image_bytes:
+    if not image_url:
         return []
 
-    print(f"\n[SerpApi] Searching Google Lens with Base64 Image (size: {len(image_bytes)} bytes)")
-    
-    b64_img = base64.b64encode(image_bytes).decode('utf-8')
-    data_uri = f"data:image/jpeg;base64,{b64_img}"
+    print(f"\n[SerpApi] Searching Google Lens with Image URL: {image_url}")
     
     params = {
       "engine": "google_lens",
-      "url": data_uri,
+      "url": image_url,
       "api_key": SERPAPI_KEY,
       "hl": "th"
     }

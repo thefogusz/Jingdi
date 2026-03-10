@@ -220,8 +220,9 @@ async def check_image(files: List[UploadFile] = File(...)):
 
         # Upload first image to Cloudflare R2
         img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
+        public_img_url = None
         try:
-            upload_image(img_filename, contents[0])
+            public_img_url = upload_image(img_filename, contents[0])
         except Exception as up_err:
             print(f"[R2] Upload warning: {up_err}")
 
@@ -282,7 +283,12 @@ async def check_image(files: List[UploadFile] = File(...)):
             try:
                 if contents:
                     database.log_request("[API] SerpApi Google Lens", f"[Image reverse search]", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
-                    serpapi_sources = serpapi_google_lens(contents[0])
+                    if public_img_url:
+                        serpapi_sources = serpapi_google_lens(public_img_url)
+                    else:
+                        print("[main] Skipping SerpApi because R2 URL is missing.")
+                        serpapi_sources = []
+                        
                     if serpapi_sources:
                         search_context.append({"title": "Google Lens Visual Matches", "snippet": str(serpapi_sources), "url": "reverse-image-search"})
                         # Re-run Grok with the new visual matches context

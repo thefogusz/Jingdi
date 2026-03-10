@@ -1,12 +1,19 @@
+# Core backend
 fastapi
-uvicorn
-python-multipart
+uvicorn[standard]
+pydantic
+
+# LLMs
 openai
-beautifulsoup4
-requests
+google-genai
+Pillow
+
+# Tools
+ddgs
 python-dotenv
-boto3
-psycopg2-binary
+beautifulsoup4
+pytest
+ psycopg2-binary
 duckduckgo-search
 feedparser
 google-genai
