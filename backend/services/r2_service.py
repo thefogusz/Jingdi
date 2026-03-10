@@ -28,7 +28,7 @@ def _get_client():
 
 def upload_image(filename: str, data: bytes, content_type: str = "image/jpeg") -> str:
     """Upload image bytes to R2 and return the public URL."""
-    bucket = os.getenv("R2_BUCKET_NAME", "jingdi-uploads")
+    bucket = os.getenv("R2_BUCKET_NAME", "jingdiupload")
     public_url_base = (os.getenv("R2_PUBLIC_URL") or "https://pub-288db4e945a94cb78539b5d398c81430.r2.dev").rstrip("/")
 
     client = _get_client()
