@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const backendUrl =
   process.env.BACKEND_URL ||
   (process.env.NODE_ENV === "production"
-    ? "https://api.jingdi.online"
+    ? "https://jingdi.onrender.com"
     : "http://127.0.0.1:8000");
 
 const nextConfig: NextConfig = {
