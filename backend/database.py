@@ -253,7 +253,7 @@ def get_cases_api_breakdown(limit: int = 20):
             SELECT case_id, MIN(timestamp), MAX(timestamp),
                    SUM(estimated_cost_usd),
                    MAX(CASE WHEN status='success' THEN 1 ELSE 0 END),
-                   MAX(query)
+                   (SELECT query FROM api_logs a2 WHERE a2.case_id = api_logs.case_id ORDER BY a2.id ASC LIMIT 1)
             FROM api_logs
             WHERE case_id IS NOT NULL AND case_id != ''
             GROUP BY case_id
