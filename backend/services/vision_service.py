@@ -12,28 +12,16 @@ from .gemini_pool import get_next_client
 VISION_PROMPT_TEMPLATE = (
     "Current Date: {current_date} (พ.ศ. {current_year_th})\n\n"
     "{context}\n\n"
-    "CRITICAL INSTRUCTION: If the image appears to be a graphic quote, an infographic, a meme format, "
-    "or text added onto a background for aesthetic/sharing purposes, DO NOT lower the score just because "
-    "it is 'manipulated', 'photoshopped', or 'AI-generated'. People use these tools to create news graphics. "
-    "Your primary goal is to extract the text claim accurately so it can be fact-checked. Only flag manipulation "
-    "if it is intended to deceive (e.g., deepfaking a person doing something they didn't).\n\n"
+    "CRITICAL ARCHITECTURAL KNOWLEDGE: The 'King Power Mahanakhon' building in Bangkok has a unique 'pixelated' or 'fragmented' design that looks like parts are missing or crumbling. This is INTENTIONAL ARCHITECTURE. Do NOT flag this building as a sign of image manipulation, destruction, or glitches.\n\n"
+    "CRITICAL INSTRUCTION: Analyze the image objectively. Extract the text accurately. Identify colors, logos, and layouts. "
+    "Only flag manipulation if it is clearly intended to deceive (e.g., deepfaking a person's face).\n\n"
     "Return a JSON response with ONLY the following keys:\n"
     "- score: Integer 0 to 100 for credibility.\n"
-    "- analysis: Explanation of the findings in Thai.\n"
-    "- visual_indicators: A list of visual signals in Thai.\n"
-    "- extracted_text: Any readable text in the image (both Thai and English).\n"
+    "- analysis: Objective explanation of findings in Thai.\n"
+    "- visual_indicators: A list of visual signals in Thai (e.g., logos, building names).\n"
+    "- extracted_text: Readable text in the image (both Thai and English).\n"
     "- english_keywords: Array of 4-8 specific ENGLISH search terms for finding the ORIGINAL NEWS STORY.\n"
-    "CRITICAL — THAI NEWS GRAPHIC PATTERN: Thai news graphics often use a dramatic BACKGROUND PHOTO "
-    "(e.g., squid on fishing boat) as clickbait, while the ACTUAL STORY is described in the TEXT OVERLAY and a smaller inset image. "
-    "ALWAYS read ALL text in the image first. The HEADLINE TEXT is the real story. The background photo may be completely unrelated.\n"
-    "PRIORITY for keywords: "
-    "(1) HEADLINE TEXT: Translate Thai headline text to English. Use its MEANING, not what the background photo shows. "
-    "Example: big squid-fishing photo + text 'พบหมึกมหึมาในถิ่นที่อยู่ธรรมชาติครั้งแรก' "
-    "→ keywords MUST be ['colossal squid', 'first natural habitat observation', 'Mesonychoteuthis hamiltoni'] "
-    "NOT ['giant squid', 'Thai fishermen', 'fishing boat']. "
-    "KEY TERM: หมึกมหึมา = colossal squid = Mesonychoteuthis hamiltoni (different from ปลาหมึกยักษ์ = Architeuthis dux).\n"
-    "(2) Add: organization, location, event type from text or small inset image.\n"
-    "- is_global_story: true if the HEADLINE describes an international/science/foreign story (even if text is in Thai).\n"
+    "- is_global_story: true if the headline describes an international/scientific/foreign story.\n"
 )
 
 
@@ -64,22 +52,15 @@ def _grok_vision_fallback(image_buffers: list, prompt: str) -> dict:
                 {
                     "role": "system",
                     "content": (
-                        "You are a highly accurate fake news detection AI that can analyze images. "
-                        "Respond with valid JSON only in this format: "
+                        "You are a highly accurate fact-checker. Respond with valid JSON only in this format: "
                         '{"score": 50, "analysis": "...", "visual_indicators": [], "extracted_text": "", '
                         '"english_keywords": ["keyword1", "keyword2"], "is_global_story": true}'
-                        "\n\nCRITICAL — THAI NEWS GRAPHIC PATTERN:"
-                        "\nThai news graphics use a dramatic BACKGROUND PHOTO as clickbait. The ACTUAL STORY is in the TEXT OVERLAY."
-                        "\nALWAYS fact-check the HEADLINE TEXT, not the background photo."
-                        "\n\nPRIORITY for english_keywords:"
-                        "\n1. Read ALL text in the image. Translate Thai headline to English. Use its MEANING."
-                        "   Example: big squid-fishing photo + text 'พบหมึกมหึมาในถิ่นที่อยู่ธรรมชาติครั้งแรก'"
-                        "   → keywords: ['colossal squid', 'first natural habitat observation', 'Mesonychoteuthis hamiltoni']"
-                        "   NOT ['giant squid', 'Thai fishermen', 'fishing boat']"
-                        "\n   KEY TERM: หมึกมหึมา = colossal squid = Mesonychoteuthis hamiltoni"
-                        "\n   (DIFFERENT from ปลาหมึกยักษ์ = Architeuthis dux)"
-                        "\n2. Add visual details from text or small inset image (not background photo)."
-                        "\nis_global_story: true if headline describes international/science story (even if text is Thai)."
+                        "\n\nCRITICAL ARCHITECTURAL KNOWLEDGE: "
+                        "\nThe 'King Power Mahanakhon' building in Bangkok has a unique 'pixelated' fragmented design. This is STYLISTIC ARCHITECTURE, not destruction."
+                        "\n\nINSTRUCTION:"
+                        "\n1. Read ALL text. State the core claim. Translate Thai headline to English search terms."
+                        "\n2. Be objective. Use neutral language."
+                        "\nis_global_story: true if headline describes international/science/foreign story."
                     )
                 },
                 {"role": "user", "content": content}

@@ -221,17 +221,19 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     {search_context if search_context else "No search context provided."}
     ---
     
-    You are also connected to the live internet. If the provided context is insufficient, you MUST search the web to verify this claim against current, reputable news sources.
-    
-    CRITICAL INSTRUCTION: Never definitively state that something is "Fake" or "False" (or "True") without backing it up with explicit evidence. You MUST explicitly cite your sources in your analysis. For example, use phrases like "อ้างอิงจากสำนักข่าว [ชื่อสำนักข่าว]...", "จากข้อมูลบนเว็บไซต์...ระบุว่า...". If you cannot find evidence on the live web to verify the claim, state clearly that "จากการค้นหา ไม่พบหลักฐานอ้างอิงที่สามารถยืนยันได้..." (Based on the search, no concrete evidence was found...). Ground all your analysis strictly in the sources you find. Do not make assumptions.
+    CRITICAL INSTRUCTION: Analyze the claim using ONLY the provided search context and your internal knowledge of confirmed historical facts. 
+    1. STRICT ADHERENCE: You MUST stay 100% on-topic to the specific claim provided in the "text" field. If the claim is about "Best City", do NOT talk about "City Collapsing" or "Disasters" unless the search results explicitly link them.
+    2. NO HALLUCINATION: NEVER invent events, dates, or citations. Do not claim "CBS News" or "Wikipedia" reported something unless you see that exact link and text in the provided context. If you hallucinate fake news to debunk other news, you have failed.
+    3. SEARCH BREADTH: If the context is empty, simply state that no evidence was found. Never guess.
+    4. OBJECTIVITY: Do not be biased towards finding "Fake News". If a claim is just a positive prediction or a generic statement, treat it as such.
     
     TONE & STYLE INSTRUCTION: Write the `analysis` section in simple, everyday Thai language (ภาษาชาวบ้าน เข้าใจง่าย กระชับ). Avoid overly academic or confusing legal/technical jargon. 
     
     CRITICAL FORMATTING INSTRUCTION: You MUST format the `analysis` text logically using Markdown. 
     1. CONCISENESS: Keep the analysis extremely short and to the point. Use a maximum of 3-4 short bullet points. Give the user exactly what they need to know without fluff.
     2. NO URLS IN TEXT: DO NOT include raw URLs (http...) or markdown links (e.g., [Text](URL)) inside the `analysis` text. It looks messy. Rely entirely on the `sources` JSON array to provide links.
-    3. Use **bold text** to highlight important names, dates, or keywords (e.g. **Reuters**, **Fake News**).
-    4. EVIDENCE OF SEARCH & MISSING DATA: You MUST explicitly state the breadth of your search. If you CANNOT find real evidence, state clearly: "**จากการตรวจสอบข้ามแหล่งข้อมูลบนโซเชียลมีเดีย (เช่น Facebook, X) และเว็บไซต์ข่าวที่น่าเชื่อถือหลัก** ไม่พบรายงานหรือข้อมูลที่ยืนยันเรื่องนี้ได้" Make it sound robust but keep it short.
+    3. Use **bold text** to highlight important names, dates, or keywords.
+    4. EVIDENCE OF SEARCH & MISSING DATA: Explicitly state what you searched for. If you cannot find evidence, state: "**จากการตรวจสอบข้ามแหล่งข้อมูลบนโซเชียลมีเดียและเว็บไซต์ข่าวหลัก** ไม่พบรายงานหรือข้อมูลที่ยืนยันเรื่องนี้ได้"
     
     Provide a JSON response with the following keys:
     - score: An integer from 0 to 100 where 0 is definitively disproven misinformation and 100 is highly credible with evidence. Use scores like 40-60 if no evidence is found either way.
