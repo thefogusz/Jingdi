@@ -19,5 +19,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the backend codebase
 COPY . .
 
-# Command to run the application (Railway provides PORT env var)
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]
+# Start application on $PORT (default 8000)
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

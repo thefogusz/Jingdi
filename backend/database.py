@@ -6,7 +6,7 @@ import json
 import psycopg2
 import psycopg2.extras
 
-DATABASE_URL = os.getenv("DATABASE_URL")  # Railway injects this automatically
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 def _is_sqlite():
     return not DATABASE_URL
