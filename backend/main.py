@@ -1,5 +1,6 @@
 import os
 import asyncio
+import aiohttp
 from typing import List
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,7 +54,7 @@ import io
 import time
 import uuid
 import database
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from services.llm_service import analyze_text_claim, analyze_with_grok, analyze_image_fact_check, get_next_client
 from services.search_service import search_web, scrape_url
 from services.vision_service import analyze_images_with_vision
@@ -252,23 +253,36 @@ def check_url(request: UrlCheckRequest):
         }
 
 @app.get("/api/admin/image/{filename}")
-def get_admin_image(filename: str):
+async def get_admin_image(filename: str):
     if not filename or ".." in filename or "/" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     
-    public_url_base = os.getenv("R2_PUBLIC_URL", "")
-    if not public_url_base:
-        print(f"[AdminImage] ERROR: R2_PUBLIC_URL is not set!")
-        # Fallback to a placeholer or error
-        raise HTTPException(status_code=500, detail="Configuration error: R2_PUBLIC_URL missing")
-
     target_url = get_image_url(filename)
     # Ensure protocol is present
     if not target_url.startswith("http"):
         target_url = f"https://{target_url}"
         
-    print(f"[AdminImage] Redirecting {filename} -> {target_url}")
-    return RedirectResponse(url=target_url)
+    print(f"[AdminImage] Proxying {filename} from {target_url}")
+    
+    try:
+        # Using a single-use session for simplicity in this endpoint
+        async with aiohttp.ClientSession() as session:
+            async with session.get(target_url, timeout=10) as resp:
+                if resp.status != 200:
+                    print(f"[AdminImage] Error fetching from R2: {resp.status}")
+                    raise HTTPException(status_code=resp.status, detail=f"Image not found on R2 (Status {resp.status})")
+                
+                content = await resp.read()
+                content_type = resp.headers.get("Content-Type", "image/jpeg")
+                return Response(
+                    content=content, 
+                    media_type=content_type,
+                    headers={"Cache-Control": "public, max-age=3600"}
+                )
+    except Exception as e:
+        print(f"[AdminImage] Proxy error: {str(e)}")
+        # If proxy fails, try one last time with a redirect as fallback
+        return RedirectResponse(url=target_url)
 
 @app.post("/api/check-image")
 async def check_image(files: List[UploadFile] = File(...)):

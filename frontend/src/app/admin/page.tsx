@@ -495,7 +495,7 @@ export default function AdminDashboard() {
                               return m ? (
                                 <div className="flex items-center gap-2 min-w-0">
                                   <span className="text-xs bg-white/5 px-2 py-1 rounded-md border border-white/5 text-neutral-400 truncate min-w-0">
-                                    {request.query.replace(m[0], '').replace('()', '').trim()}
+                                    {request.query.replace(m[0], '').replace('Headline/Text extracted from image:', '').replace('()', '').replace(/:$/, '').trim() || 'Image Upload'}
                                   </span>
                                   <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="shrink-0" title="คลิกเพื่อดูภาพต้นฉบับ">
                                     <img src={`/api/admin/image/${m[1]}`} className="h-10 w-10 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform cursor-pointer shadow-md" alt="" />
@@ -556,13 +556,26 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3 whitespace-nowrap text-neutral-400 text-[11px]">
                           {new Date(c.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </td>
-                        <td className="px-4 py-3 max-w-[160px] truncate text-neutral-300 text-xs" title={c.query}>
-                          {c.query.startsWith('[') ? (
-                            <span className="bg-white/5 px-2 py-0.5 rounded text-[10px] border border-white/5">
-                              {c.query.split(' ')[0].replace('[','').replace(']','')}
-                            </span>
-                          ) : c.query}
-                        </td>
+                          {(() => {
+                            const m = c.query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
+                            if (m) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className="bg-white/5 px-2 py-0.5 rounded text-[10px] border border-white/5 text-neutral-400">
+                                    {c.query.replace(m[0], '').replace('[', '').replace(']', '').replace('Upload', '').trim() || 'Image'}
+                                  </span>
+                                  <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                                    <img src={`/api/admin/image/${m[1]}`} className="h-6 w-6 object-cover rounded border border-neutral-800 hover:scale-[5] transition-transform origin-left" alt="" />
+                                  </a>
+                                </div>
+                              );
+                            }
+                            return c.query.startsWith('[') ? (
+                              <span className="bg-white/5 px-2 py-0.5 rounded text-[10px] border border-white/5">
+                                {c.query.split(' ')[0].replace('[','').replace(']','')}
+                              </span>
+                            ) : c.query;
+                          })()}
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {c.apis
