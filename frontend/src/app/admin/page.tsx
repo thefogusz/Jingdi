@@ -438,8 +438,8 @@ export default function AdminDashboard() {
                       {fb.query.includes(".jpg") && fb.query.startsWith("[") ? (
                         <span className="inline-flex items-center space-x-2">
                           <span className="truncate">{fb.query.split(" ")[0].replace("[", "").replace("]", "")}</span>
-                          <a href={`/api/admin/image/${fb.query.split(" ").pop()}`} target="_blank" rel="noopener noreferrer" className="ml-2">
-                            <img src={`/api/admin/image/${fb.query.split(" ").pop()}`} className="h-6 w-6 object-cover rounded-md border border-neutral-700 hover:scale-[3] transform origin-left transition-transform shadow-lg" alt="Upload" />
+                          <a href={`https://pub-288db4e945a94cb78539b5d398c81430.r2.dev/${fb.query.split(" ").pop()}`} target="_blank" rel="noopener noreferrer" className="ml-2">
+                            <img src={`https://pub-288db4e945a94cb78539b5d398c81430.r2.dev/${fb.query.split(" ").pop()}`} className="h-6 w-6 object-cover rounded-md border border-neutral-700 hover:scale-[3] transform origin-left transition-transform shadow-lg" alt="Upload" />
                           </a>
                         </span>
                       ) : (
@@ -488,8 +488,8 @@ export default function AdminDashboard() {
                           {request.query.includes(".jpg") && request.query.startsWith("[") ? (
                             <div className="flex items-center space-x-3">
                               <span className="text-xs bg-white/5 px-2 py-1 rounded-md border border-white/5">{request.query.split(" ")[0].replace("[", "").replace("]", "")}</span>
-                              <a href={`/api/admin/image/${request.query.split(" ").pop()}`} target="_blank" rel="noopener noreferrer">
-                                <img src={`/api/admin/image/${request.query.split(" ").pop()}`} className="h-8 w-8 object-cover rounded-md border border-neutral-700 hover:scale-[3] transform origin-left transition-transform cursor-pointer shadow-md" alt="Upload" />
+                              <a href={`https://pub-288db4e945a94cb78539b5d398c81430.r2.dev/${request.query.split(" ").pop()}`} target="_blank" rel="noopener noreferrer">
+                                <img src={`https://pub-288db4e945a94cb78539b5d398c81430.r2.dev/${request.query.split(" ").pop()}`} className="h-8 w-8 object-cover rounded-md border border-neutral-700 hover:scale-[3] transform origin-left transition-transform cursor-pointer shadow-md" alt="Upload" />
                               </a>
                             </div>
                           ) : (
