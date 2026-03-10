@@ -179,7 +179,9 @@ def get_dashboard_stats():
             "api_breakdown": api_breakdown,
             "api_brand_totals": api_brand_totals,
             "cases": get_cases_api_breakdown() if 'get_cases_api_breakdown' in globals() else [],
-            "r2_public_url": os.getenv("R2_PUBLIC_URL") or "https://pub-288db4e945a94cb78539b5d398c81430.r2.dev"
+            "r2_public_url": os.getenv("R2_PUBLIC_URL") or "https://pub-288db4e945a94cb78539b5d398c81430.r2.dev",
+            "r2_bucket": os.getenv("R2_BUCKET_NAME", "jingdi-uploads"),
+            "r2_account_prefix": os.getenv("R2_ACCOUNT_ID", "")[:6] + "..." if os.getenv("R2_ACCOUNT_ID") else "None"
         }
     except Exception as e:
         print(f"Stats error: {e}")

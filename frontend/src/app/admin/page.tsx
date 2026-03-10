@@ -111,7 +111,8 @@ function BrandBadge({ name }: { name: string }) {
 }
 
 function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size?: "sm" | "md" | "lg", r2BaseUrl?: string }) {
-  const m = query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
+  const m = query.match(/\(([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))\)/i) || 
+            query.match(/image:\s*([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))/i);
   if (!m) return <span className="truncate flex-1">{query}</span>;
 
   const filename = m[1];
@@ -440,6 +441,18 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 ))}
+                {stats?.r2_bucket && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5">
+                    <div className="flex justify-between items-center px-1">
+                      <span className="text-[9px] text-neutral-500 uppercase font-bold tracking-wider">R2 Bucket</span>
+                      <span className="text-[10px] font-mono text-neutral-300">{stats.r2_bucket}</span>
+                    </div>
+                    <div className="flex justify-between items-center px-1">
+                      <span className="text-[9px] text-neutral-500 uppercase font-bold tracking-wider">R2 Account</span>
+                      <span className="text-[10px] font-mono text-neutral-300">{stats.r2_account_prefix}</span>
+                    </div>
+                  </div>
+                )}
               </div>
           </div>
         </div>
