@@ -631,6 +631,29 @@ async def toggle_killswitch(req: ToggleKillSwitchRequest):
     database.set_kill_switch(req.active)
     return {"status": "success", "kill_switch_active": req.active}
 
+@app.get("/api/admin/image/{filename}")
+async def serve_admin_image(filename: str):
+    """Proxy image from R2/S3 to avoid CORS/access issues in admin dashboard."""
+    public_url = os.getenv("R2_PUBLIC_URL")
+    if not public_url:
+        raise HTTPException(status_code=500, detail="R2_PUBLIC_URL not configured")
+    
+    url = f"{public_url.rstrip('/')}/{filename}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return Response(status_code=resp.status, content="Image not found")
+                
+                content = await resp.read()
+                return Response(
+                    content=content,
+                    media_type=resp.headers.get("Content-Type", "image/jpeg"),
+                    headers={"Cache-Control": "public, max-age=3600"}
+                )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/admin/chat")
 async def admin_chat(req: ChatRequest):
     if req.password != os.getenv("ADMIN_PASSWORD", "admin123"):
