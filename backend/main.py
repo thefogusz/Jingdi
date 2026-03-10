@@ -634,11 +634,8 @@ async def toggle_killswitch(req: ToggleKillSwitchRequest):
 @app.get("/api/admin/image/{filename}")
 async def serve_admin_image(filename: str):
     """Proxy image from R2/S3 to avoid CORS/access issues in admin dashboard."""
-    public_url = os.getenv("R2_PUBLIC_URL")
-    if not public_url:
-        # Instead of 500, return 404 with info
-        print("[AdminImage] ERROR: R2_PUBLIC_URL is not set!")
-        return Response(status_code=404, content="R2_PUBLIC_URL not configured on server")
+    # Use fallback if env var is missing
+    public_url = os.getenv("R2_PUBLIC_URL") or "https://pub-288db4e945a94cb78539b5d398c81430.r2.dev"
     
     url = f"{public_url.rstrip('/')}/{filename}"
     try:

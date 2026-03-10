@@ -178,7 +178,7 @@ def get_dashboard_stats():
             "api_breakdown": api_breakdown,
             "api_brand_totals": api_brand_totals,
             "cases": get_cases_api_breakdown() if 'get_cases_api_breakdown' in globals() else [],
-            "r2_public_url": os.getenv("R2_PUBLIC_URL", "").rstrip("/")
+            "r2_public_url": os.getenv("R2_PUBLIC_URL") or "https://pub-288db4e945a94cb78539b5d398c81430.r2.dev"
         }
     except Exception as e:
         print(f"Stats error: {e}")
@@ -186,7 +186,8 @@ def get_dashboard_stats():
             "total_requests": 0, "total_cost_usd": 0, "success_rate_percent": 100,
             "recent_errors": [], "system_health": {"database": "Error", "gemini_api": "Unknown", "web_search": "Unknown"},
             "kill_switch_active": False, "recent_traffic": [], "recent_feedback": [],
-            "api_breakdown": [], "api_brand_totals": [], "cases": [], "r2_public_url": ""
+            "api_breakdown": [], "api_brand_totals": [], "cases": [], 
+            "r2_public_url": "https://pub-288db4e945a94cb78539b5d398c81430.r2.dev"
         }
 
 
