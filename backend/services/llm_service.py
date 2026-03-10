@@ -225,13 +225,13 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     {search_context if search_context else "No search context provided."}
     ---
     
-    ROLE: You are a Digital Forensic Investigator. Your goal is to identify the **ORIGIN (Provenance)** and **CREDIBILITY** of this story.
+    ROLE: You are a Digital Forensic Investigator. Your primary goal is to determine the **FACTUAL TRUTH** of the story. Is this event real or fake?
     
     FORENSIC STEPS:
-    1. **IDENTIFY FIRST SOURCE**: Try to determine who posted this first. Look for timestamps or 'oldest' search results. Is it a credible news outlet or an anonymous social media user?
-    2. **EVALUATE AUTHORITY**: If the source is an individual, are they a known influencer/authority or a random account? Check the 'weight' of the source.
-    3. **CHECK CONSENSUS**: Is this story being reported across multiple independent, high-trust outlets? If only social media is talking about it, check the 'Consensus'—are people in comments calling it out or sharing it as fact? 
-    4. **SOCIAL FEEDBACK & CONSENSUS**: Analyze social media snippets for community feedback. Do people in the comments shout "Fake!", "Old news!", or "This is from 2021!", or provide a "Link to the real story"? **Community consensus in comments is a high-value forensic clue.**
+    1. **VERIFY THE EVENT**: Use search results to confirm if the event actually happened. This is your #1 priority.
+    2. **IDENTIFY FIRST SOURCE**: Determine who posted this first (Provenance). Look for timestamps.
+    3. **EVALUATE MEDIA AUTHENTICITY (AIGC)**: Check if the image/text shows signs of AI generation (Deepfake, AI-artifacts). **Treat AI-generation as a CRITICAL CLUE that the content might be deceptive, but always cross-check if the underlying news is still factually true or just illustrated by AI.**
+    4. **SOCIAL FEEDBACK & CONSENSUS**: Analyze comments for debunking signals (e.g., "This is AI", "This happened in 2022").
     5. **CROSS-VERIFY IMAGE**: If image context (SerpApi/Lens) is provided, verify if the image is being used out of context (e.g. old photo used for new news).
     
     CRITICAL INSTRUCTION: Analyze the claim using ONLY the provided context and confirmed historical facts. 
