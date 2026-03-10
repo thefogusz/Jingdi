@@ -1,8 +1,41 @@
 import os
 import requests
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
 from services.gemini_pool import get_next_client
+
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+
+def search_tavily(query: str, max_results: int = 10) -> list:
+    """Search using Tavily AI Search API — extracts full content, no scraping needed."""
+    if not TAVILY_API_KEY:
+        return []
+    try:
+        payload = {
+            "api_key": TAVILY_API_KEY,
+            "query": query,
+            "search_depth": "basic",
+            "include_answer": False,
+            "include_raw_content": False,
+            "max_results": max_results,
+        }
+        res = requests.post("https://api.tavily.com/search", json=payload, timeout=10)
+        if res.status_code != 200:
+            print(f"[Tavily] Error {res.status_code}: {res.text[:100]}")
+            return []
+        data = res.json()
+        results = []
+        for item in data.get("results", []):
+            results.append({
+                "title": item.get("title", ""),
+                "link": item.get("url", ""),
+                "snippet": item.get("content", "")[:300],
+            })
+        print(f"[Tavily] Found {len(results)} results for: {query[:60]}")
+        return results
+    except Exception as e:
+        print(f"[Tavily] Exception: {e}")
+        return []
+
 
 
 def _run_gemini(client, prompt: str) -> str:
@@ -171,61 +204,70 @@ def search_web(query: str) -> list:
             news_rss_en = search_google_news(query, lang='en', country='US')
             sources.extend([s for s in news_rss_en if not any(e['link'] == s['link'] for e in sources)])
 
-        # 3. DuckDuckGo multi-stage
-        with DDGS() as ddgs:
-            seen_links = {s['link'] for s in sources}
+        # 3. Tavily AI Search (Primary) — falls back to DDGS if no API key
+        seen_links = {s['link'] for s in sources}
 
-            # Stage 3.1: Targeted site search
-            if target_site:
-                try:
-                    site_results = list(ddgs.text(f"{target_site} {thai_keywords}", region='th-th', max_results=5))
-                    for item in site_results:
-                        link = item.get("url") or item.get("href", "")
-                        if link and link not in seen_links:
-                            sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
-                            seen_links.add(link)
-                except Exception:
-                    pass
+        tavily_results = []
+        if TAVILY_API_KEY:
+            # 3.1: Thai search via Tavily
+            tavily_th = search_tavily(thai_keywords, max_results=8)
+            for item in tavily_th:
+                if item["link"] and item["link"] not in seen_links:
+                    sources.append(item)
+                    seen_links.add(item["link"])
 
-            # Stage 3.2: Thai-language search
-            try:
-                gen_results = list(ddgs.text(thai_keywords, region='th-th', max_results=8))
-                for item in gen_results:
-                    link = item.get("url") or item.get("href", "")
-                    if link and link not in seen_links:
-                        sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
-                        seen_links.add(link)
-            except Exception:
-                pass
-
-            # Stage 3.3: English global search (ALWAYS run for international coverage)
+            # 3.2: English search via Tavily
             if english_keywords:
-                try:
-                    en_results = list(ddgs.text(english_keywords, region='wt-wt', max_results=8))
-                    for item in en_results:
-                        link = item.get("url") or item.get("href", "")
-                        if link and link not in seen_links:
-                            sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
-                            seen_links.add(link)
-                except Exception:
-                    pass
+                tavily_en = search_tavily(english_keywords, max_results=8)
+                for item in tavily_en:
+                    if item["link"] and item["link"] not in seen_links:
+                        sources.append(item)
+                        seen_links.add(item["link"])
 
-            # Stage 3.4: Extra fallback if still low results
-            if len(sources) < 3:
-                try:
-                    fallback = list(ddgs.text(thai_keywords, max_results=5))
-                    for item in fallback:
-                        link = item.get("url") or item.get("href", "")
-                        if link and link not in seen_links:
-                            sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
-                            seen_links.add(link)
-                except Exception:
-                    pass
+        # Fallback: DuckDuckGo if Tavily key not set OR Tavily returned nothing
+        if not TAVILY_API_KEY or len(sources) < 3:
+            try:
+                from ddgs import DDGS
+                with DDGS() as ddgs:
+                    if target_site:
+                        try:
+                            site_results = list(ddgs.text(f"{target_site} {thai_keywords}", region='th-th', max_results=5))
+                            for item in site_results:
+                                link = item.get("url") or item.get("href", "")
+                                if link and link not in seen_links:
+                                    sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
+                                    seen_links.add(link)
+                        except Exception:
+                            pass
+
+                    try:
+                        gen_results = list(ddgs.text(thai_keywords, region='th-th', max_results=8))
+                        for item in gen_results:
+                            link = item.get("url") or item.get("href", "")
+                            if link and link not in seen_links:
+                                sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
+                                seen_links.add(link)
+                    except Exception:
+                        pass
+
+                    if english_keywords:
+                        try:
+                            en_results = list(ddgs.text(english_keywords, region='wt-wt', max_results=8))
+                            for item in en_results:
+                                link = item.get("url") or item.get("href", "")
+                                if link and link not in seen_links:
+                                    sources.append({"title": item.get("title", ""), "link": link, "snippet": item.get("body", "")})
+                                    seen_links.add(link)
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[DDG Fallback] Error: {e}")
 
         return sources[:15]
     except Exception as e:
         print(f"Search API Error: {e}")
         return [{"title": "Search Failed", "link": "#", "snippet": str(e)}]
+
 
 
 def scrape_url(url: str) -> dict:

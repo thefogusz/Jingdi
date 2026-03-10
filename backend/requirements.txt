@@ -10,6 +10,7 @@ Pillow
 boto3
 requests
 ddgs
+tavily-python
 python-dotenv
 beautifulsoup4
 feedparser
