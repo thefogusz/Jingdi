@@ -1,11 +1,16 @@
-import { useState, useRef, useEffect, ClipboardEvent } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import Script from 'next/script';
 import { CatState } from '@/app/page';
+
+const TURNSTILE_SITE_KEY = '0x4AAAAAACog3f_ZxCilAGHM';
 
 export default function OmniInput({ setResults, setLoading, loading, setInputState, catState }: any) {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
 
   // Handle pasting images directly into the component/window
   useEffect(() => {
@@ -41,10 +46,14 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
     setLoading(true);
     setResults(null);
     
+    // Get Turnstile token from hidden widget
+    const cfToken = (window as any).turnstile?.getResponse(turnstileRef.current) || turnstileToken || '';
+    
     try {
       if (files.length > 0) {
         const formData = new FormData();
         files.forEach(f => formData.append("files", f));
+        if (cfToken) formData.append('cf_token', cfToken);
         
         // Sending to Next.js proxy rewrite which routes to /api on backend
         const res = await fetch('/api/check-image', {
@@ -62,7 +71,7 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
         // Submit Text or URL
         const isUrl = text.trim().startsWith('http://') || text.trim().startsWith('https://');
         const endpoint = isUrl ? '/api/check-url' : '/api/check-text';
-        const body = isUrl ? { url: text.trim() } : { text: text.trim() };
+        const body = isUrl ? { url: text.trim(), cf_token: cfToken } : { text: text.trim(), cf_token: cfToken };
 
         // Using Next.js rewrite proxy
         const res = await fetch(endpoint, {
@@ -263,6 +272,31 @@ export default function OmniInput({ setResults, setLoading, loading, setInputSta
         </div>
       )}
 
+    </div>
+
+      {/* Cloudflare Turnstile — hidden, auto-verifies silently */}
+      <div
+        ref={turnstileRef}
+        className="cf-turnstile"
+        data-sitekey={TURNSTILE_SITE_KEY}
+        data-callback="onTurnstileSuccess"
+        data-size="invisible"
+        style={{ display: 'none' }}
+      />
+      <Script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        strategy="afterInteractive"
+        onLoad={() => {
+          (window as any).onTurnstileSuccess = (token: string) => {
+            setTurnstileToken(token);
+          };
+          (window as any).turnstile?.render(turnstileRef.current, {
+            sitekey: TURNSTILE_SITE_KEY,
+            callback: (token: string) => setTurnstileToken(token),
+            size: 'invisible',
+          });
+        }}
+      />
     </div>
   );
 }

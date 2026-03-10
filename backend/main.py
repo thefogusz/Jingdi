@@ -30,9 +30,11 @@ app.add_middleware(
 
 class TextCheckRequest(BaseModel):
     text: str
+    cf_token: str = ""
 
 class UrlCheckRequest(BaseModel):
     url: str
+    cf_token: str = ""
 
 class ToggleKillSwitchRequest(BaseModel):
     password: str
@@ -69,9 +71,33 @@ def check_kill_switch():
             detail="⚠️ ขออภัย ขณะนี้ระบบอยู่ระหว่างการปิดปรับปรุงหรือชะลอการใช้ชั่วคราว (API Kill Switch is ON)"
         )
 
+TURNSTILE_SECRET = os.getenv("CLOUDFLARE_TURNSTILE_SECRET", "")
+
+def verify_turnstile(token: str):
+    """Verify Cloudflare Turnstile token to block bots. Skips if secret not configured."""
+    if not TURNSTILE_SECRET:
+        return  # graceful skip if not configured yet
+    if not token:
+        raise HTTPException(status_code=400, detail="Bot detected: missing Turnstile token")
+    try:
+        import requests as http_requests
+        res = http_requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": TURNSTILE_SECRET, "response": token},
+            timeout=5
+        )
+        result = res.json()
+        if not result.get("success"):
+            raise HTTPException(status_code=403, detail="Bot detected: Turnstile verification failed")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Turnstile] Verification error (allowing through): {e}")
+
 @app.post("/api/check-text")
 def check_text(request: TextCheckRequest):
     check_kill_switch()
+    verify_turnstile(request.cf_token)
     start_time = time.time()
     case_id = str(uuid.uuid4())
     try:
