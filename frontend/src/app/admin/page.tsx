@@ -435,16 +435,19 @@ export default function AdminDashboard() {
                     )}
                     <div className="mt-3 text-xs text-neutral-500 font-mono truncate pt-3 border-t border-white/5 flex items-center group-hover:text-neutral-400 transition-colors">
                       <span className="text-neutral-500 mr-2 font-sans font-medium">{fb.endpoint.replace('/api/', '')}</span>
-                      {fb.query.includes(".jpg") && fb.query.startsWith("[") ? (
-                        <span className="inline-flex items-center space-x-2">
-                          <span className="truncate">{fb.query.split(" ")[0].replace("[", "").replace("]", "")}</span>
-                          <a href={`/api/admin/image/${fb.query.split(" ").pop()}`} target="_blank" rel="noopener noreferrer" className="ml-2">
-                            <img src={`/api/admin/image/${fb.query.split(" ").pop()}`} className="h-6 w-6 object-cover rounded-md border border-neutral-700 hover:scale-[3] transform origin-left transition-transform shadow-lg" alt="Upload" />
-                          </a>
-                        </span>
-                      ) : (
-                        <span className="truncate">{fb.query}</span>
-                      )}
+                      {(() => {
+                          const m = fb.query.match(/([a-f0-9]+\.jpg)/);
+                          return m ? (
+                            <span className="inline-flex items-center space-x-2">
+                              <span className="truncate text-neutral-500 text-[10px]">{fb.query.replace(m[0], '').trim()}</span>
+                              <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="ml-2" title="เปิดภาพต้นฉบับ">
+                                <img src={`/api/admin/image/${m[1]}`} className="h-8 w-8 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform shadow-lg" alt="Upload" />
+                              </a>
+                            </span>
+                          ) : (
+                            <span className="truncate">{fb.query}</span>
+                          );
+                        })()}
                     </div>
                   </div>
                 ))}
@@ -485,16 +488,21 @@ export default function AdminDashboard() {
                           {request.endpoint.replace('/api/', '')}
                         </td>
                         <td className="px-5 py-4 max-w-xs truncate text-neutral-300" title={request.query}>
-                          {request.query.includes(".jpg") && request.query.startsWith("[") ? (
-                            <div className="flex items-center space-x-3">
-                              <span className="text-xs bg-white/5 px-2 py-1 rounded-md border border-white/5">{request.query.split(" ")[0].replace("[", "").replace("]", "")}</span>
-                              <a href={`/api/admin/image/${request.query.split(" ").pop()}`} target="_blank" rel="noopener noreferrer">
-                                <img src={`/api/admin/image/${request.query.split(" ").pop()}`} className="h-8 w-8 object-cover rounded-md border border-neutral-700 hover:scale-[3] transform origin-left transition-transform cursor-pointer shadow-md" alt="Upload" />
-                              </a>
-                            </div>
-                          ) : (
-                            <span className="text-xs leading-relaxed">{request.query}</span>
-                          )}
+                          {(() => {
+                              const m = request.query.match(/([a-f0-9]+\.jpg)/);
+                              return m ? (
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-xs bg-white/5 px-2 py-1 rounded-md border border-white/5 text-neutral-400">
+                                    {request.query.replace(m[0], '').trim()}
+                                  </span>
+                                  <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูภาพต้นฉบับ">
+                                    <img src={`/api/admin/image/${m[1]}`} className="h-10 w-10 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform cursor-pointer shadow-md" alt="Upload" />
+                                  </a>
+                                </div>
+                              ) : (
+                                <span className="text-xs leading-relaxed">{request.query}</span>
+                              );
+                            })()}
                         </td>
                         <td className="px-5 py-4 font-mono text-[11px] text-emerald-400/80 group-hover:text-emerald-400 text-right transition-colors">
                           ${request.cost.toFixed(4)}
