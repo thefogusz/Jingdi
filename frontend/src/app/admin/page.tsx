@@ -436,18 +436,18 @@ export default function AdminDashboard() {
                     <div className="mt-3 text-xs text-neutral-500 font-mono truncate pt-3 border-t border-white/5 flex items-center group-hover:text-neutral-400 transition-colors">
                       <span className="text-neutral-500 mr-2 font-sans font-medium">{fb.endpoint.replace('/api/', '')}</span>
                       {(() => {
-                          const m = fb.query.match(/\(?([a-f0-9]+\.jpg)\)?/);
+                          const m = fb.query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
                           return m ? (
-                            <span className="inline-flex items-center space-x-2">
-                              <span className="truncate text-neutral-500 text-[10px]">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="truncate text-neutral-500 text-[10px] min-w-0">
                                 {fb.query.replace(m[0], '').replace('()', '').trim()}
                               </span>
-                              <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="ml-2" title="เปิดภาพต้นฉบับ">
-                                <img src={`/api/admin/image/${m[1]}`} className="h-8 w-8 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform shadow-lg" alt="Upload" />
+                              <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="shrink-0" title="เปิดภาพต้นฉบับ">
+                                <img src={`/api/admin/image/${m[1]}`} className="h-8 w-8 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform shadow-lg" alt="" />
                               </a>
-                            </span>
+                            </div>
                           ) : (
-                            <span className="truncate">{fb.query}</span>
+                            <span className="truncate flex-1">{fb.query}</span>
                           );
                         })()}
                     </div>
@@ -491,14 +491,14 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-5 py-4 max-w-xs truncate text-neutral-300" title={request.query}>
                           {(() => {
-                              const m = request.query.match(/\(?([a-f0-9]+\.jpg)\)?/);
+                              const m = request.query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
                               return m ? (
-                                <div className="flex items-center space-x-2">
-                                  <span className="text-xs bg-white/5 px-2 py-1 rounded-md border border-white/5 text-neutral-400">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-xs bg-white/5 px-2 py-1 rounded-md border border-white/5 text-neutral-400 truncate min-w-0">
                                     {request.query.replace(m[0], '').replace('()', '').trim()}
                                   </span>
-                                  <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูภาพต้นฉบับ">
-                                    <img src={`/api/admin/image/${m[1]}`} className="h-10 w-10 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform cursor-pointer shadow-md" alt="Upload" />
+                                  <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="shrink-0" title="คลิกเพื่อดูภาพต้นฉบับ">
+                                    <img src={`/api/admin/image/${m[1]}`} className="h-10 w-10 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform cursor-pointer shadow-md" alt="" />
                                   </a>
                                 </div>
                               ) : (

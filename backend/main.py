@@ -255,7 +255,18 @@ def check_url(request: UrlCheckRequest):
 def get_admin_image(filename: str):
     if not filename or ".." in filename or "/" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    public_url_base = os.getenv("R2_PUBLIC_URL", "")
+    if not public_url_base:
+        print(f"[AdminImage] ERROR: R2_PUBLIC_URL is not set!")
+        # Fallback to a placeholer or error
+        raise HTTPException(status_code=500, detail="Configuration error: R2_PUBLIC_URL missing")
+
     target_url = get_image_url(filename)
+    # Ensure protocol is present
+    if not target_url.startswith("http"):
+        target_url = f"https://{target_url}"
+        
     print(f"[AdminImage] Redirecting {filename} -> {target_url}")
     return RedirectResponse(url=target_url)
 
@@ -282,10 +293,15 @@ async def check_image(files: List[UploadFile] = File(...)):
                 raise HTTPException(status_code=415, detail=f"ไฟล์ '{file.filename}' ไม่ใช่รูปภาพที่รองรับ (รองรับ JPG, PNG, WEBP, GIF เท่านั้น)")
 
         # Upload first image to Cloudflare R2
-        img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
+        ext = "jpg"
+        if files[0].filename and "." in files[0].filename:
+            ext = files[0].filename.split(".")[-1].lower()
+        
+        img_filename = f"{uuid.uuid4().hex[:12]}.{ext}"
         public_img_url = None
         try:
-            public_img_url = upload_image(img_filename, contents[0])
+            content_type = files[0].content_type or "image/jpeg"
+            public_img_url = upload_image(img_filename, contents[0], content_type=content_type)
         except Exception as up_err:
             print(f"[R2] Upload warning: {up_err}")
 
@@ -439,9 +455,14 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 raise HTTPException(status_code=413, detail=f"ไฟล์ '{file.filename}' มีขนาด {size_mb:.1f}MB เกินขนาดสูงสุดที่อนุญาต ({MAX_SIZE_MB}MB)")
         
         # Upload first image to Cloudflare R2
-        img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
+        ext = "jpg"
+        if files[0].filename and "." in files[0].filename:
+            ext = files[0].filename.split(".")[-1].lower()
+            
+        img_filename = f"{uuid.uuid4().hex[:12]}.{ext}"
         try:
-            upload_image(img_filename, contents[0])
+            content_type = files[0].content_type or "image/jpeg"
+            upload_image(img_filename, contents[0], content_type=content_type)
         except Exception as up_err:
             print(f"[R2] Upload warning: {up_err}")
 
