@@ -109,6 +109,48 @@ function BrandBadge({ name }: { name: string }) {
   );
 }
 
+function QueryThumbnail({ query, size = "md" }: { query: string, size?: "sm" | "md" | "lg" }) {
+  const m = query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
+  if (!m) return <span className="truncate flex-1">{query}</span>;
+
+  const filename = m[1];
+  const cleanText = query
+    .replace(m[0], '')
+    .replace('Headline/Text extracted from image:', '')
+    .replace('Image processing', '')
+    .replace('()', '')
+    .replace('[', '').replace(']', '')
+    .replace(/:$/, '')
+    .trim();
+
+  const imgClasses = {
+    sm: "h-6 w-6",
+    md: "h-8 w-8",
+    lg: "h-10 w-10"
+  }[size];
+
+  const scale = {
+    sm: "hover:scale-[6]",
+    md: "hover:scale-[5]",
+    lg: "hover:scale-[4]"
+  }[size];
+
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-1">
+      <span className="truncate text-neutral-400 text-[10px] bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+        {cleanText || 'Image'}
+      </span>
+      <a href={`/api/admin/image/${filename}`} target="_blank" rel="noopener noreferrer" className="shrink-0 group/img relative" title={`View original: ${filename}`}>
+        <img 
+          src={`/api/admin/image/${filename}`} 
+          className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative`} 
+          alt={`Image: ${filename}`} 
+        />
+      </a>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -435,21 +477,7 @@ export default function AdminDashboard() {
                     )}
                     <div className="mt-3 text-xs text-neutral-500 font-mono truncate pt-3 border-t border-white/5 flex items-center group-hover:text-neutral-400 transition-colors">
                       <span className="text-neutral-500 mr-2 font-sans font-medium">{fb.endpoint.replace('/api/', '')}</span>
-                      {(() => {
-                          const m = fb.query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
-                          return m ? (
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <span className="truncate text-neutral-500 text-[10px] min-w-0">
-                                {fb.query.replace(m[0], '').replace('()', '').trim()}
-                              </span>
-                              <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="shrink-0" title="เปิดภาพต้นฉบับ">
-                                <img src={`/api/admin/image/${m[1]}`} className="h-8 w-8 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform shadow-lg" alt="" />
-                              </a>
-                            </div>
-                          ) : (
-                            <span className="truncate flex-1">{fb.query}</span>
-                          );
-                        })()}
+                      <QueryThumbnail query={fb.query} size="sm" />
                     </div>
                   </div>
                 ))}
@@ -489,22 +517,8 @@ export default function AdminDashboard() {
                         <td className="px-5 py-4 font-mono text-xs text-blue-400/80 group-hover:text-blue-400 transition-colors">
                           {request.endpoint.replace('/api/', '')}
                         </td>
-                        <td className="px-5 py-4 max-w-xs truncate text-neutral-300" title={request.query}>
-                          {(() => {
-                              const m = request.query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
-                              return m ? (
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-xs bg-white/5 px-2 py-1 rounded-md border border-white/5 text-neutral-400 truncate min-w-0">
-                                    {request.query.replace(m[0], '').replace('Headline/Text extracted from image:', '').replace('()', '').replace(/:$/, '').trim() || 'Image Upload'}
-                                  </span>
-                                  <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="shrink-0" title="คลิกเพื่อดูภาพต้นฉบับ">
-                                    <img src={`/api/admin/image/${m[1]}`} className="h-10 w-10 object-cover rounded-md border border-neutral-700 hover:scale-[4] transform origin-left transition-transform cursor-pointer shadow-md" alt="" />
-                                  </a>
-                                </div>
-                              ) : (
-                                <span className="text-xs leading-relaxed">{request.query}</span>
-                              );
-                            })()}
+                        <td className="px-5 py-4 max-w-xs text-neutral-300">
+                          <QueryThumbnail query={request.query} size="md" />
                         </td>
                         <td className="px-5 py-4 font-mono text-[11px] text-emerald-400/80 group-hover:text-emerald-400 text-right transition-colors">
                           ${request.cost.toFixed(4)}
@@ -556,26 +570,9 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3 whitespace-nowrap text-neutral-400 text-[11px]">
                           {new Date(c.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </td>
-                          {(() => {
-                            const m = c.query.match(/\(?([a-f0-9]+\.(?:jpg|jpeg|png|webp|gif))\)?/i);
-                            if (m) {
-                              return (
-                                <div className="flex items-center gap-2">
-                                  <span className="bg-white/5 px-2 py-0.5 rounded text-[10px] border border-white/5 text-neutral-400">
-                                    {c.query.replace(m[0], '').replace('[', '').replace(']', '').replace('Upload', '').trim() || 'Image'}
-                                  </span>
-                                  <a href={`/api/admin/image/${m[1]}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                                    <img src={`/api/admin/image/${m[1]}`} className="h-6 w-6 object-cover rounded border border-neutral-800 hover:scale-[5] transition-transform origin-left" alt="" />
-                                  </a>
-                                </div>
-                              );
-                            }
-                            return c.query.startsWith('[') ? (
-                              <span className="bg-white/5 px-2 py-0.5 rounded text-[10px] border border-white/5">
-                                {c.query.split(' ')[0].replace('[','').replace(']','')}
-                              </span>
-                            ) : c.query;
-                          })()}
+                        <td className="px-4 py-3">
+                           <QueryThumbnail query={c.query} size="sm" />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {c.apis
