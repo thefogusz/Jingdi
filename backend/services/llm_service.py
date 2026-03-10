@@ -230,9 +230,10 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     4. **CROSS-VERIFY IMAGE**: If image context (SerpApi/Lens) is provided, verify if the image is being used out of context (e.g. old photo used for new news).
     
     CRITICAL INSTRUCTION: Analyze the claim using ONLY the provided context and confirmed historical facts. 
-    1. STRICT ADHERENCE: Stay 100% on-topic. If the claim is positive, don't invent disasters to debunk it.
-    2. NO HALLUCINATION: NEVER invent events, dates, or citations. If you find no evidence, state it clearly.
-    3. OBJECTIVITY: Do not bias towards finding "Fake News". 
+    1. **TOPIC RELEVANCE CHECK**: Before analyzing, ask: "Do these search results talk about the SAME ACTION or EVENT as the claim?" (e.g. if the claim is about "withdrawing money", do NOT use search results about "interest rates" to debunk it).
+    2. **STRICT ANCHORING**: If search results are about a different topic, DISCARD THEM. State clearly: "**ไม่พบข้อมูลที่เกี่ยวข้องโดยตรงกับเรื่อง [Topic] ในผลการค้นหา**" and analyze based on that absence.
+    3. **NO HALLUCINATION**: NEVER invent events, dates, or citations. If you find no evidence, state it clearly.
+    4. **OBJECTIVITY**: Do not bias towards finding "Fake News". 
     
     TONE & STYLE INSTRUCTION: Write the `analysis` section in professional but simple Thai. Focus on the word "**ต้นตอ**" (Origin) and "**ความน่าเชื่อถือ**" (Credibility).
     

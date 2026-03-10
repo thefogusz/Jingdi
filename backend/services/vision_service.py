@@ -21,7 +21,7 @@ VISION_PROMPT_TEMPLATE = (
     "- visual_indicators: A list of visual signals in Thai (e.g., logos, building names).\n"
     "- extracted_text: Readable text in the image (both Thai and English). BE EXTREMELY THOROUGH. Read every small character correctly.\n"
     "- text_clarity: 'high', 'low', or 'none'. Set to 'low' if text is blurry, handwritten, or partially obscured.\n"
-    "- english_keywords: Array of 4-8 specific ENGLISH search terms for finding the ORIGINAL NEWS STORY.\n"
+    "- english_keywords: Array of 4-8 specific ENGLISH search terms. INCLUDE SOURCES (e.g. 'efinanceThai TV') and ACTIONS (e.g. 'withdraw normally') found in text. Focus on the EXACT news post.\n"
     "- is_global_story: true if the headline describes an international/scientific/foreign story.\n"
 )
 
