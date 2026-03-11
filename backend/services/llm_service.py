@@ -260,7 +260,7 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
 
     try:
         response = grok_client.chat.completions.create(
-            model="grok-beta",
+            model="grok-4-1-fast-reasoning",
             messages=[
                 {"role": "system", "content": "You are a highly accurate fake news detection AI with access to the live internet. You MUST search the web to verify claims. You respond with valid JSON only in the format: {\"score\": 50, \"analysis\": \"...\", \"claims_extracted\": [], \"suspicious_words\": [], \"sources\": [{\"title\":\"\",\"snippet\":\"\",\"link\":\"\"}]}"},
                 {"role": "user", "content": prompt}

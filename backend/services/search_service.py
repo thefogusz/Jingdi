@@ -6,6 +6,10 @@ from services.gemini_pool import get_next_client
 import database
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+CLOUDFLARE_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "") # Reusing existing account ID variable name if set
+if not CLOUDFLARE_ACCOUNT_ID:
+    CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "")
 
 def search_tavily(query: str, max_results: int = 10, case_id: str = None) -> list:
     """Search using Tavily AI Search API — extracts full content, no scraping needed."""
@@ -273,6 +277,51 @@ def search_web(query: str, case_id: str = None) -> list:
 
 
 
+def _scrape_with_cloudflare(url: str) -> str:
+    """Fallback scraper for JS-heavy sites using Cloudflare Browser Rendering API."""
+    if not CLOUDFLARE_ACCOUNT_ID or not CLOUDFLARE_API_TOKEN:
+        return ""
+        
+    try:
+        scrape_url = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/browser-rendering/scrape"
+        headers = {
+            "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "url": url,
+            "elements": [{"id": "body", "selector": "body"}]
+        }
+        
+        print(f"[Cloudflare Scraper] Attempting to scrape JS-rendered site: {url}")
+        res = requests.post(scrape_url, headers=headers, json=payload, timeout=20)
+        
+        if res.status_code == 200:
+            data = res.json()
+            elements_data = data.get("result", [])
+            if elements_data and isinstance(elements_data, list):
+                results = elements_data[0].get("results", [])
+                if results and isinstance(results, list):
+                    html_content = results[0].get("html", "")
+                    
+                    if html_content:
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        # Target common text containers first for cleaner extraction
+                        paragraphs = soup.find_all(['p', 'h1', 'h2', 'h3', 'article', 'span', 'div'])
+                        extracted_text = " ".join([p.get_text() for p in paragraphs]).strip()
+                        
+                        # Fallback to full body text if specific tags were empty
+                        if len(extracted_text) < 100:
+                            extracted_text = soup.get_text(separator=' ', strip=True)
+                            
+                        print(f"[Cloudflare Scraper] Success. Extracted {len(extracted_text)} characters.")
+                        return extracted_text
+    except Exception as e:
+        print(f"[Cloudflare Scraper] Error: {e}")
+        
+    return ""
+
+
 def scrape_url(url: str) -> dict:
     """Scrape basic text content from a URL.
     
@@ -310,16 +359,20 @@ def scrape_url(url: str) -> dict:
         paragraphs = soup.find_all('p')
         text = " ".join([p.get_text() for p in paragraphs]).strip()
 
-        # Fallback for JS-rendered sites: use OG meta tags
+        # Fallback for JS-rendered sites: use CF API and then OG meta tags
         if len(text) < 100:
-            og_title = soup.find("meta", property="og:title")
-            og_desc = soup.find("meta", property="og:description")
-            if og_title and not title:
-                title = og_title.get("content", "").strip()
-            if og_desc:
-                og_text = og_desc.get("content", "").strip()
-                if og_text:
-                    text = og_text  # At minimum we have a summary for Grok to work with
+            cf_text = _scrape_with_cloudflare(cleaned_url)
+            if len(cf_text) > 200:
+                text = cf_text
+            else:
+                og_title = soup.find("meta", property="og:title")
+                og_desc = soup.find("meta", property="og:description")
+                if og_title and not title:
+                    title = og_title.get("content", "").strip()
+                if og_desc:
+                    og_text = og_desc.get("content", "").strip()
+                    if og_text:
+                        text = og_text  # At minimum we have a summary for Grok to work with
 
         return {"title": title, "text": text[:5000], "cleaned_url": cleaned_url}
     except Exception as e:

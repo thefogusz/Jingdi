@@ -663,7 +663,7 @@ The user is the Administrator. Answer their question based on the stats in infor
         from google.genai import types as genai_types
 
         # Try Grok first (with model fallback), then Gemini
-        grok_models = ["grok-beta", "grok-vision-beta"]
+        grok_models = ["grok-4-1-fast-reasoning", "grok-2-vision-1212"]
         
         if grok_client:
             for model_name in grok_models:
