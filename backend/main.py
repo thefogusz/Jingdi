@@ -154,6 +154,8 @@ async def check_text(request: TextCheckRequest):
             "sources": analysis_result.get("sources", []),
             "visual_indicators": []
         }
+    except HTTPException:
+        raise
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-text", request.text[:100], latency, "error", str(e), case_id=case_id)
@@ -239,6 +241,8 @@ def check_url(request: UrlCheckRequest):
             "sources": analysis_result.get("sources", []),
             "visual_indicators": []
         }
+    except HTTPException:
+        raise
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-url", request.url[:100], latency, "error", str(e), case_id=case_id)
@@ -419,10 +423,12 @@ async def check_image(files: List[UploadFile] = File(...)):
             "log_id": log_id,
             "score": analysis_result.get("score", vision_result.get("score", 50)),
             "analysis": analysis_result.get("analysis", vision_result.get("analysis", "")),
-            "sources": grok_sources,
+            "sources": sources,
             "visual_indicators": visual_indicators,
             "extracted_text": extracted_text
         }
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc() # Use standard print_exc instead of manual file writing that might cause OSError 22
@@ -576,6 +582,8 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 "visual_indicators": visual_indicators,
                 "extracted_text": extracted_text
             }
+    except HTTPException:
+        raise
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-screenshot", "[Screenshot Error]", latency, "error", str(e), case_id=case_id)

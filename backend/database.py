@@ -28,6 +28,34 @@ def _execute(cur, query: str, args=None):
         cur.execute(query)
 
 
+def _ensure_columns():
+    """Ensure essential columns exist for logging and dashboard branding."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    # case_id for per-request tracking
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN case_id TEXT")
+        else:
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS case_id TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
+
+    # api_name for branding/pricing breakdown
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN api_name TEXT")
+        else:
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS api_name TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
+        
+    cur.close()
+    conn.close()
+
+
 def init_db():
     conn = _get_conn()
     cur = conn.cursor()
@@ -65,6 +93,9 @@ def init_db():
     conn.commit()
     cur.close()
     conn.close()
+    
+    # Run migrations to ensure columns exist on older DB instances
+    _ensure_columns()
 
 
 def log_request(endpoint: str, query: str, latency_ms: int, status: str,

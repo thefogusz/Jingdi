@@ -165,7 +165,7 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
             
             try:
                 import database
-                database.log_request("[API] Gemini Text", text[:50], 0, "success", cost=0.0002)
+                database.log_request("[API] Gemini Text", text[:50], 0, "success", cost=0.0002, api_name="Gemini")
             except Exception:
                 pass
                 
@@ -288,7 +288,7 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
         
         try:
             import database
-            database.log_request("[API] Grok 4.1 Reasoning", text[:50], 0, "success", cost=0.0005)
+            database.log_request("[API] Grok 4.1 Reasoning", text[:50], 0, "success", cost=0.0005, api_name="Grok")
         except Exception:
             pass
             
@@ -408,7 +408,7 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "", log
         try:
             import database
             log_entry = f"Image processing ({log_filename})" if log_filename else "Image processing"
-            database.log_request("[API] Grok Vision", log_entry, 0, "success", cost=0.0100)
+            database.log_request("[API] Grok Vision", log_entry, 0, "success", cost=0.0100, api_name="Grok")
         except Exception:
             pass
             
