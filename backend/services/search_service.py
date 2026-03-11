@@ -3,10 +3,11 @@ import requests
 import concurrent.futures
 from bs4 import BeautifulSoup
 from services.gemini_pool import get_next_client
+import database
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
-def search_tavily(query: str, max_results: int = 10) -> list:
+def search_tavily(query: str, max_results: int = 10, case_id: str = None) -> list:
     """Search using Tavily AI Search API — extracts full content, no scraping needed."""
     if not TAVILY_API_KEY:
         return []
@@ -32,6 +33,8 @@ def search_tavily(query: str, max_results: int = 10) -> list:
                 "snippet": item.get("content", "")[:300],
             })
         print(f"[Tavily] Found {len(results)} results for: {query[:60]}")
+        if case_id:
+            database.log_request("[API] Tavily AI Search", query[:100], 0, "info", cost=0.0001, case_id=case_id, api_name="Tavily")
         return results
     except Exception as e:
         print(f"[Tavily] Exception: {e}")
@@ -162,7 +165,7 @@ def search_google_news(query: str, lang: str = 'th', country: str = 'TH') -> lis
         return []
 
 
-def search_web(query: str) -> list:
+def search_web(query: str, case_id: str = None) -> list:
     """Search the web using Thai + English keywords in parallel for maximum coverage."""
     try:
         # Extract BOTH Thai and English keywords simultaneously
@@ -211,9 +214,9 @@ def search_web(query: str) -> list:
         if TAVILY_API_KEY:
             futures_map = {}
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                futures_map['th'] = executor.submit(search_tavily, thai_keywords, 6)
+                futures_map['th'] = executor.submit(search_tavily, thai_keywords, 6, case_id)
                 if english_keywords:
-                    futures_map['en'] = executor.submit(search_tavily, english_keywords, 6)
+                    futures_map['en'] = executor.submit(search_tavily, english_keywords, 6, case_id)
 
             for key, future in futures_map.items():
                 try:

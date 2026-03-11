@@ -84,28 +84,29 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
     We are trying to verify the following text or claim:
     "{text}"
     
-    Below is the web search context we found regarding this claim:
+    Below is some initial context (if any) we found regarding this claim:
     ---
-    {search_context if search_context else "No search context provided."}
+    {search_context if search_context else "No initial search context provided."}
     ---
     
-    CRITICAL INSTRUCTION: Analyze the claim using the provided search context. If the search context conclusively proves or disproves the claim, provide a definitive score (e.g. 10 or 90). If the search context is irrelevant or inconclusive, give a score between 40-60.
+    CRITICAL INSTRUCTION: You MUST use your Google Search tool to find the ORIGIN of this claim. Do not hallucinate. 
+    If you find the exact source or a credible debunking, provide a definitive score (0-10, or 90-100). 
+    If the search results are irrelevant or inconclusive, give a score between 40-60.
     
     TONE & STYLE INSTRUCTION: Write the `analysis` section in simple, everyday Thai language (ภาษาชาวบ้าน เข้าใจง่าย กระชับ).
     
-    CRITICAL FORMATTING INSTRUCTION: You MUST format the `analysis` text logically using Markdown. 
-    1. CONCISENESS: Keep the analysis extremely short and to the point. Use a maximum of 3-4 short bullet points. Give the user exactly what they need to know without fluff.
-    2. NO URLS IN TEXT: DO NOT include raw URLs (http...) or markdown links (e.g., [Text](URL)) inside the `analysis` text. It looks messy. Rely entirely on the `sources` JSON array to provide links.
+    CRITICAL FORMATTING INSTRUCTION: 
+    1. CONCISENESS: Keep the analysis extremely short and to the point. Max 3-4 bullet points.
+    2. NO URLS IN TEXT: DO NOT include raw URLs in the `analysis` text.
     3. Use **bold text** to highlight important names, dates, or keywords.
-    4. EVIDENCE OF SEARCH & MISSING DATA: If the provided search context does NOT contain enough information, or if you cannot verify the claim, you MUST explicitly state where you would logically look and that no data was found.
-    5. SOURCES: **ABSOLUTELY NO HALLUCINATED URLs.** You MUST ONLY return the exact URLs explicitly provided in the `search_context`. Do not make up any domains, paths, or links. If there is no exact URL in the context, leave the `sources` array empty `[]`. Do NOT provide Google Search links.
+    4. CITE YOUR SEARCH: Explicitly state what you searched for and what you found (or didn't find).
     
     Provide a JSON response with the following keys:
-    - score: An integer from 0 to 100. Use 40-60 if evidence is inconclusive or missing.
+    - score: An integer from 0 to 100.
     - analysis: A clear, concise explanation in Thai. 
     - claims_extracted: A list of the main factual claims made in the text (in Thai).
     - suspicious_words: A list of emotionally manipulative or sensationalist words used in the text (in Thai).
-    - sources: An array of source objects as described above.
+    - sources: An array of source objects [{'title': '...', 'snippet': '...', 'link': '...'}] from your Google Search.
     
     Return ONLY valid JSON.
     """
@@ -129,17 +130,19 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         temperature=0.1,
+                        tools=[{"google_search": {}}]
                     ),
                 )
             except Exception as inner_e:
                 if "429" in str(inner_e) or "RESOURCE_EXHAUSTED" in str(inner_e):
-                    # Fallback to lite version if 2.5-flash daily limit is hit
+                    # Fallback to lite version if 2.5-flash limit is hit
                     response = gemini_client.models.generate_content(
                         model='gemini-2.5-flash-lite',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
                             temperature=0.1,
+                            tools=[{"google_search": {}}]
                         ),
                     )
                 else:
@@ -257,7 +260,7 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
 
     try:
         response = grok_client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning",
+            model="grok-beta",
             messages=[
                 {"role": "system", "content": "You are a highly accurate fake news detection AI with access to the live internet. You MUST search the web to verify claims. You respond with valid JSON only in the format: {\"score\": 50, \"analysis\": \"...\", \"claims_extracted\": [], \"suspicious_words\": [], \"sources\": [{\"title\":\"\",\"snippet\":\"\",\"link\":\"\"}]}"},
                 {"role": "user", "content": prompt}
@@ -279,9 +282,6 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
                 valid_sources.append(s)
             elif "title" in s and "snippet" in s:
                 s["link"] = "" # Erase invalid/dead links
-                valid_sources.append(s)
-            elif "title" in s and "snippet" in s:
-                s["link"] = "" # Erase invalid fake links
                 valid_sources.append(s)
                 
         parsed["sources"] = valid_sources
@@ -368,7 +368,7 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "", log
     content.append({"type": "text", "text": prompt_text})
     try:
         response = grok_client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning",
+            model="grok-vision-beta",
             messages=[
                 {"role": "system", "content": (
                     "You are a highly accurate fact-checker with vision and live web search. "

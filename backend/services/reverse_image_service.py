@@ -1,181 +1,118 @@
 """
-Reverse Image Search Service — DDG Image Search
+Reverse Image Search Service — Google Cloud Vision
 =================================================
-Runs DuckDuckGo image search using keywords provided by the caller
-(already extracted by Gemini Vision in vision_service.py).
-
-No second Gemini Vision call here — keywords come from vision_result.
+Uses Google Cloud Vision (WEB_DETECTION) to find the absolute earliest
+occurrences of an image on the web, bypassing unreliable DDG/SerpApi.
 """
 
-import io
+import os
 import json
 import requests
-from PIL import Image
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
-SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "0389298144c80dc48a35dc467c8df0799af7fd6155df6dfd7837e5e6bf6d5a75")
+GOOGLE_CLOUD_API_KEY = os.environ.get("GOOGLE_CLOUD_API_KEY", "")
 
-
-def ddg_image_search(query: str) -> list:
+def google_cloud_vision_web_detection(image_url: str) -> dict:
     """
-    Search DuckDuckGo images for the given query.
-    Returns source page URLs of news sites using similar images.
-    Uses the same duckduckgo_search library already installed — no API key needed.
-
-    Returns: [{"url": str, "title": str, "snippet": str}, ...]
+    Perform a reverse image search using Google Cloud Vision Web Detection.
+    Args:
+        image_url: The URL of the image (e.g., from Cloudflare R2).
+    Returns:
+        A dictionary containing parsed web entities, full matching images, 
+        and pages containing matching images.
     """
-    if not query.strip():
-        return []
-    try:
-        from ddgs import DDGS
-        results = []
-        seen_urls = set()
+    if not image_url or not GOOGLE_CLOUD_API_KEY:
+        print("[Vision API] Missing URL or API Key")
+        return {"entities": [], "matching_pages": []}
 
-        with DDGS() as ddgs:
-            for item in ddgs.images(query, max_results=15):
-                page_url = item.get("url", "")
-                title    = item.get("title", "")
-                source   = item.get("source", "")
-
-                if page_url and page_url not in seen_urls:
-                    results.append({
-                        "url":     page_url,
-                        "title":   title or source,
-                        "snippet": source,
-                    })
-                    seen_urls.add(page_url)
-
-        return results[:10]
-
-    except Exception as e:
-        print(f"[DDG Image Search] Error: {e}")
-        return []
-
-        
-import base64
-
-def serpapi_google_lens(image_url: str) -> list[dict]:
-    """
-    Perform a reverse image search using SerpApi Google Lens engine.
-    Uses the R2 public URL for the image instead of base64 to avoid URI length errors.
-    Returns a list of dictionaries with 'title', 'link', and 'snippet'.
-    """
-    if not image_url:
-        return []
-
-    print(f"\n[SerpApi] Searching Google Lens with Image URL: {image_url}")
+    print(f"\n[Vision API] Searching Google Vision with Image URL: {image_url}")
     
-    params = {
-      "engine": "google_lens",
-      "url": image_url,
-      "api_key": SERPAPI_KEY,
-      "hl": "th"
+    url = f"https://vision.googleapis.com/v1/images:annotate?key={GOOGLE_CLOUD_API_KEY}"
+    payload = {
+        "requests": [
+            {
+                "image": {"source": {"imageUri": image_url}},
+                "features": [{"type": "WEB_DETECTION", "maxResults": 15}]
+            }
+        ]
     }
 
-    results = []
-    seen_urls = set()
-    
     try:
-        response = requests.get("https://serpapi.com/search", params=params, timeout=20)
+        response = requests.post(url, json=payload, timeout=20)
         
         if response.status_code == 200:
             data = response.json()
+            if not data.get("responses"):
+                return {"entities": [], "matching_pages": []}
+                
+            web_detection = data["responses"][0].get("webDetection", {})
             
-            # --- 1. Visual Matches (Existing) ---
-            matches = data.get("visual_matches", [])
-            print(f"[SerpApi] Found {len(matches)} visual matches")
-            for match in matches:
-                link = match.get("link")
-                title = match.get("title")
-                snippet = match.get("source")
-                if link and title and link not in seen_urls:
-                    seen_urls.add(link)
-                    results.append({
+            # Extract Web Entities (What Google thinks the image is about)
+            entities = []
+            for entity in web_detection.get("webEntities", []):
+                if entity.get("description"):
+                    entities.append(entity["description"])
+            
+            # Extract pages where the image was found
+            matching_pages = []
+            for page in web_detection.get("pagesWithMatchingImages", []):
+                if page.get("url"):
+                    title = page.get("pageTitle", "Unknown Page")
+                    # Clean up Google's weird formatting in titles if needed
+                    matching_pages.append({
+                        "url": page["url"],
                         "title": title,
-                        "link": link,
-                        "snippet": f"Potentially found on: {snippet}" if snippet else "Visual match from Google Lens",
-                        "source": "Google Lens (Visual Match)"
+                        "snippet": f"Image found on this page."
                     })
-                    if len(results) >= 15: break
-
-            # --- 2. Related Searches (Critical for identifying the event/story) ---
-            related_queries = data.get("search_queries", [])
-            if related_queries:
-                print(f"[SerpApi] Found {len(related_queries)} related search queries")
-                for q in related_queries:
-                    text = q.get("title")
-                    if text:
-                        results.append({
-                            "title": f"Related Search: {text}",
-                            "link": f"https://www.google.com/search?q={text}",
-                            "snippet": "Google Lens identified this phrase as highly relevant to the image content.",
-                            "source": "Google Lens (Inferred Identity)"
-                        })
-
-            # --- 3. Knowledge Graph (Identifies people, places, things) ---
-            kg = data.get("knowledge_graph", [])
-            if kg:
-                print(f"[SerpApi] Found knowledge graph data")
-                for item in kg:
-                    title = item.get("title")
-                    subtitle = item.get("subtitle")
-                    link = item.get("link")
-                    if title:
-                        results.append({
-                            "title": f"Entity: {title} ({subtitle or 'Known Identity'})",
-                            "link": link or "N/A",
-                            "snippet": f"Identified by Google Lens Knowledge Graph.",
-                            "source": "Google Lens (Knowledge Graph)"
-                        })
-
+                    
+            print(f"[Vision API] Found {len(entities)} entities, {len(matching_pages)} matching pages")
+            return {
+                "entities": entities,
+                "matching_pages": matching_pages
+            }
         else:
-            print(f"[SerpApi] Error status {response.status_code}: {response.text[:200]}")
+            print(f"[Vision API] Error status {response.status_code}: {response.text[:200]}")
             
     except Exception as e:
-        print(f"[SerpApi] Exception during Google Lens search: {e}")
+        print(f"[Vision API] Exception during search: {e}")
         
-    return results
+    return {"entities": [], "matching_pages": []}
 
-
-def reverse_image_search(keywords: list, is_global: bool = False) -> dict:
+def reverse_image_search(image_url: str, is_global: bool = False) -> dict:
     """
-    Run DuckDuckGo image search with the provided keywords.
-    Keywords are extracted by Gemini Vision in vision_service.py (one Gemini call).
-
+    Run Google Cloud Vision reverse search.
     Returns:
         pages   — list of {url, title, snippet}
-        summary — Grok-ready provenance text block
+        summary — Provenance text block for Gemini/Grok
     """
-    if not keywords:
-        return {"pages": [], "summary": ""}
+    if not image_url or not GOOGLE_CLOUD_API_KEY:
+        return {"pages": [], "summary": "⚠️ Google Vision API Key missing or Invalid Image URL."}
 
-    search_query = " ".join(keywords[:6])
-    pages = ddg_image_search(search_query)
+    vision_results = google_cloud_vision_web_detection(image_url)
+    pages = vision_results.get("matching_pages", [])
+    entities = vision_results.get("entities", [])
+    
+    # We don't have search_query directly from Vision API like we did DDG
+    search_query = " ".join(entities[:5]) if entities else "Unknown Image"
 
-    summary = _build_summary(keywords, is_global, pages, search_query)
-    return {"pages": pages, "summary": summary, "search_query": search_query}
+    summary = _build_summary(entities, pages)
+    return {"pages": pages[:10], "summary": summary, "search_query": search_query}
 
-
-def _build_summary(keywords: list, is_global: bool, pages: list, search_query: str) -> str:
+def _build_summary(entities: list, pages: list) -> str:
     parts = []
 
-    if is_global:
-        parts.append("🌐 INTERNATIONAL / GLOBAL story — search in ENGLISH.")
-    else:
-        parts.append("🇹🇭 Possibly LOCAL Thai story — search Thai + English sources.")
+    parts.append("🔍 **GOOGLE CLOUD VISION (WEB DETECTION) RESULTS:**")
 
-    if keywords:
-        parts.append(f'🔑 English keywords from image: {", ".join(keywords)}')
-        parts.append(f'   → DuckDuckGo image search query: "{search_query}"')
+    if entities:
+        parts.append(f"🧠 **Web Entities (Identified Concepts):** {', '.join(entities[:10])}")
 
     if pages:
-        parts.append(f'\n📰 DuckDuckGo image search found {len(pages)} page(s) using similar images:')
-        for i, p in enumerate(pages[:6], 1):
-            title = p.get("title") or p["url"]
-            parts.append(f'   {i}. [{title}]({p["url"]})')
+        parts.append(f"\n📰 **Found the exact image on {len(pages)} web pages:**")
+        for i, p in enumerate(pages[:8], 1):
+            title = p.get("title") or "Unnamed Page"
+            parts.append(f"   {i}. [{title}]({p['url']})")
     else:
-        parts.append("\n⚠️ No URL matches found via DuckDuckGo image search.")
+        parts.append("\n⚠️ **No exact image matches found on the public web.**")
 
     return "\n".join(parts)

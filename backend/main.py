@@ -58,7 +58,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from services.llm_service import analyze_text_claim, analyze_with_grok, analyze_image_fact_check, get_next_client
 from services.search_service import search_web, scrape_url
 from services.vision_service import analyze_images_with_vision
-from services.reverse_image_service import reverse_image_search, serpapi_google_lens
+from services.reverse_image_service import reverse_image_search
 from services.rss_service import search_rss_precheck
 from services.r2_service import upload_image, get_image_url
 from typing import List
@@ -110,7 +110,7 @@ async def check_text(request: TextCheckRequest):
         
         loop = asyncio.get_running_loop()
         rss_task = loop.run_in_executor(None, search_rss_precheck, request.text, keywords)
-        web_task = loop.run_in_executor(None, search_web, request.text)
+        web_task = loop.run_in_executor(None, search_web, request.text, case_id)
         
         rss_matches, search_context = await asyncio.gather(rss_task, web_task)
         
@@ -180,7 +180,7 @@ def check_url(request: UrlCheckRequest):
         # Tier 1: Free Search + Gemini
         search_query = scraped.get('title', '') or cleaned_url
         if not search_query or search_query == 'N/A': search_query = cleaned_url
-        search_context = search_web(search_query)
+        search_context = search_web(search_query, case_id)
         
         # Tier 0: RSS Pre-Check
         rss_matches = search_rss_precheck(search_query, search_query)
@@ -352,21 +352,20 @@ async def check_image(files: List[UploadFile] = File(...)):
             except Exception as e:
                 print(f"[main] Grok Vision cross-check error: {e}")
 
-        # --- Step 1b: DDG Image Search using Gemini keywords (no second Gemini call) ---
+        # --- Step 2: Google Cloud Vision Web Detection (Origin Tracking) ---
         rev_search = {"pages": [], "summary": "", "search_query": ""}
-        try:
-            rev_search = reverse_image_search(eng_keywords, is_global=is_global)
-        except Exception as rev_err:
-            print(f"DDG image search error: {rev_err}")
+        if public_img_url:
+            print(f"[main] Triggering Google Cloud Vision Web Detection for origin tracking on: {public_img_url}")
+            try:
+                database.log_request("[API] Google Cloud Vision", f"[Origin Search] ({img_filename})", 0, "info", cost=0.0015, case_id=case_id, api_name="VisionAPI")
+                rev_search = reverse_image_search(public_img_url, is_global=is_global)
+            except Exception as rev_err:
+                print(f"[main] Google Vision image search error: {rev_err}")
 
         rev_summary  = rev_search.get("summary", "")
         rev_pages    = rev_search.get("pages", [])
 
-        # Combine reverse image sources
-        combined_rev_pages = rev_pages.copy() if isinstance(rev_pages, list) else []
-
-        # --- Step 2: Search Context (Tavily/DDG) ---
-        # Use Gemini Vision's English keywords as primary query for text search
+        # --- Step 3: Text Search Context (Tavily/DDG fallback for names/entities) ---
         text_search_query = ""
         if eng_keywords:
             text_search_query = " ".join(eng_keywords[:6])
@@ -377,65 +376,40 @@ async def check_image(files: List[UploadFile] = File(...)):
 
         search_context = []
         if text_search_query.strip():
-            # search_web internally uses Tavily as primary, DDG as fallback
-            search_context = search_web(text_search_query)
+            search_context = search_web(text_search_query, case_id)
 
-        # --- Step 2b: Proactive SerpApi Google Lens (Image Origin Discovery) ---
-        # Immediate fallback if global story, no normal search results found, or text is unclear/none
-        serpapi_sources = []
-        # AGGRESSIVE FORENSIC TRIGGER: If text is missing or messy, reverse search is our ONLY hope for provenance.
-        proactive_trigger = is_global or not search_context or text_clarity in ['low', 'none'] or not extracted_text
-        
-        if proactive_trigger:
-            reason = "global" if is_global else "no_context" if not search_context else "unclear_text"
-            print(f"[main] Proactive SerpApi trigger (reason={reason})")
-            try:
-                if public_img_url:
-                    database.log_request("[API] SerpApi Google Lens", f"[Proactive Origin Search] ({img_filename})", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
-                    serpapi_sources = serpapi_google_lens(public_img_url)
-                    if serpapi_sources:
-                        search_context.append({"title": "🔍 ORIGINAL SOURCE DISCOVERY (Google Lens)", "snippet": str(serpapi_sources[:5]), "url": "google-lens-check"})
-                        combined_rev_pages = serpapi_sources + combined_rev_pages
-            except Exception as e:
-                print(f"[main] Proactive SerpApi error: {e}")
+        # Include Vision origin tracing data into the context for Gemini/Grok to analyze
+        if rev_summary:
+            search_context = f"{rev_summary}\n\nWeb Search Results:\n{search_context}"
 
         # Tier 0: RSS Pre-Check for Images
         rss_matches = search_rss_precheck(extracted_text, " ".join(eng_keywords))
         if rss_matches:
-             search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
+             search_context = f"🚨 VERIFIED FACT-CHECK (RSS): {str(rss_matches)}\n\n" + str(search_context)
 
-        # --- Step 3 & 4: Grok Text Analysis ---
-        text_for_grok = f"Headline/Text extracted from image: {extracted_text}"
+        # --- Step 4: Final Truth Analysis (Gemini + Grok Fallback) ---
+        text_for_analysis = f"Headline/Text extracted from image: {extracted_text}"
         if eng_keywords:
-            text_for_grok += f" | Key concepts extracted: {', '.join(eng_keywords)}"
+            text_for_analysis += f" | Key concepts extracted: {', '.join(eng_keywords)}"
 
-        database.log_request("[API] Grok 4.1 Reasoning", f"Headline/Text extracted from image: ({img_filename}) {extracted_text[:60]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")            
-        analysis_result = analyze_with_grok(text_for_grok, str(search_context))
-
-        # --- FINAL FALLBACK: Inconclusive result check ---
+        # First pass with Gemini (Now equipped with Google Search Grounding)
+        database.log_request("[API] Gemini Text", f"Headline/Text extracted from image: ({img_filename}) {extracted_text[:60]}", 0, "info", cost=0.0002, case_id=case_id, api_name="Gemini")
+        analysis_result = analyze_text_claim(text_for_analysis, str(search_context))
         score = analysis_result.get("score", 50)
+        
+        # Escalate to Grok if Gemini is unsure (40-60) or missing sources
         grok_sources = analysis_result.get("sources", [])
+        if (40 < score < 60) or not grok_sources:
+            print("[main] Gemini score inconclusive for image. Escalating to Grok...")
+            database.log_request("[API] Grok 4.1 Reasoning", f"[Escalation] Image ({img_filename})", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")            
+            analysis_result = analyze_with_grok(text_for_analysis, str(search_context))
 
-        # If still inconclusive AND we haven't run SerpApi yet, run it now
-        if (40 < score < 60 or not grok_sources) and not serpapi_sources:
-            print("[main] Still inconclusive. Searching SerpApi Google Lens as last resort...")
-            try:
-                if public_img_url:
-                    database.log_request("[API] SerpApi Google Lens", f"[Fallback Origin Search] ({img_filename})", 0, "info", cost=0.001, case_id=case_id, api_name="SerpApi")
-                    serpapi_sources = serpapi_google_lens(public_img_url)
-                    if serpapi_sources:
-                        search_context.append({"title": "🔍 LATE SOURCE DISCOVERY (Google Lens)", "snippet": str(serpapi_sources[:5]), "url": "google-lens-check"})
-                        analysis_result = analyze_with_grok(text_for_grok, str(search_context))
-                        combined_rev_pages = serpapi_sources + combined_rev_pages
-            except Exception as e:
-                print(f"[main] Fallback SerpApi error: {e}")
-
-        # Supplement sources with reverse-image pages if Grok found none
-        grok_sources = analysis_result.get("sources", [])
-        if not grok_sources and combined_rev_pages:
-            grok_sources = [
-                {"title": p.get("title") or p.get("url", ""), "snippet": p.get("snippet", "พบภาพนี้บนหน้าเว็บนี้"), "link": p.get("url") or p.get("link", "")}
-                for p in combined_rev_pages[:5]
+        # Supplement sources with reverse-image pages if no sources were returned
+        sources = analysis_result.get("sources", [])
+        if not sources and rev_pages:
+            sources = [
+                {"title": p.get("title") or p.get("url", ""), "snippet": p.get("snippet", "พบต้นฉบับภาพบนหน้าเว็บนี้"), "link": p.get("url") or p.get("link", "")}
+                for p in rev_pages[:5]
             ]
 
         latency = int((time.time() - start_time) * 1000)
@@ -451,8 +425,7 @@ async def check_image(files: List[UploadFile] = File(...)):
         }
     except Exception as e:
         import traceback
-        with open("error_log.txt", "a", encoding="utf-8") as f:
-            f.write(traceback.format_exc() + "\n")
+        traceback.print_exc() # Use standard print_exc instead of manual file writing that might cause OSError 22
         return {
             "log_id": -1,
             "score": 50,
@@ -505,7 +478,7 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
         # If text was extracted or visual indicators found, let AI verify it
         if extracted_text and len(extracted_text) > 5:
             # Tier 1: Free Search + Gemini
-            search_context = search_web(extracted_text)
+            search_context = search_web(extracted_text, case_id)
 
             analysis_result = analyze_text_claim(extracted_text, search_context=search_context)
             score = analysis_result.get("score", 50)
@@ -545,36 +518,35 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 
                 analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
                 
-                # --- LAST RESORT: SerpApi Google Lens for Screenshot ---
+                # --- LAST RESORT: Google Cloud Vision for Screenshot ---
                 grok_score = analysis_result.get("score", 50)
                 grok_sources = analysis_result.get("sources", [])
-                serpapi_sources = []
+                vision_sources = []
 
-                if (40 < grok_score < 60) or not grok_sources:
-                    print("[main] Inconclusive screenshot result. Searching SerpApi Google Lens as last resort...")
+                if ((40 < grok_score < 60) or not grok_sources) and public_img_url:
+                    print("[main] Inconclusive screenshot result. Searching Google Cloud Vision as last resort...")
                     try:
-                        if contents:
-                            serpapi_sources = serpapi_google_lens(contents[0])
-                            if serpapi_sources:
-                                search_context.append({
-                                    "title": "Google Lens Visual Matches", 
-                                    "snippet": str(serpapi_sources), 
-                                    "url": "reverse-image-search"
-                                })
-                                # Re-run Grok with the new visual matches context
-                                analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
+                        database.log_request("[API] Google Cloud Vision", f"[Origin Search] ({img_filename})", 0, "info", cost=0.0015, api_name="VisionAPI")
+                        rev_search = reverse_image_search(public_img_url, is_global=False)
+                        vision_sources = rev_search.get("pages", [])
+                        rev_summary = rev_search.get("summary", "")
+                        
+                        if vision_sources:
+                            # Append vision context and re-run Grok
+                            search_context = f"{rev_summary}\n\nWeb Search Results:\n{search_context}"
+                            analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
                     except Exception as e:
-                        print(f"[main] SerpApi integration error in screenshot: {e}")
+                        print(f"[main] Vision API integration error in screenshot: {e}")
                 
             latency = int((time.time() - start_time) * 1000)
             log_id = database.log_request("/api/check-screenshot", f"[Screenshot Analysed] {img_filename}", latency, "success", cost=0.005)
             
             # Supplement sources with reverse-image pages if Grok found none
             grok_sources = analysis_result.get("sources", [])
-            if not grok_sources and serpapi_sources:
+            if not grok_sources and vision_sources:
                 grok_sources = [
-                    {"title": p.get("title") or p.get("url", ""), "snippet": p.get("snippet", "พบภาพนี้บนหน้าเว็บนี้"), "link": p.get("url") or p.get("link", "")}
-                    for p in serpapi_sources[:5]
+                    {"title": p.get("title") or p.get("url", ""), "snippet": p.get("snippet", "พบต้นฉบับภาพบนหน้าเว็บนี้"), "link": p.get("url") or p.get("link", "")}
+                    for p in vision_sources[:5]
                 ]
 
             # Combine results
@@ -678,7 +650,7 @@ The user is the Administrator. Answer their question based on the stats in infor
         from google.genai import types as genai_types
 
         # Try Grok first (with model fallback), then Gemini
-        grok_models = ["grok-4-1-fast-non-reasoning", "grok-4-1-fast-reasoning"]
+        grok_models = ["grok-beta", "grok-vision-beta"]
         
         if grok_client:
             for model_name in grok_models:
