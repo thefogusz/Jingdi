@@ -437,6 +437,7 @@ async def check_image(files: List[UploadFile] = File(...)):
 
 @app.post("/api/check-screenshot")
 async def check_screenshot(files: List[UploadFile] = File(...)):
+    case_id = str(uuid.uuid4())
     check_kill_switch()
     start_time = time.time()
     try:
@@ -459,10 +460,11 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
             
         img_filename = f"{uuid.uuid4().hex[:12]}.{ext}"
         upload_success = False
+        public_img_url = None
         try:
             content_type = files[0].content_type or "image/jpeg"
-            upload_image(img_filename, contents[0], content_type=content_type)
-            upload_success = True
+            public_img_url = upload_image(img_filename, contents[0], content_type=content_type)
+            upload_success = bool(public_img_url)
         except Exception as up_err:
             print(f"[R2] Upload error: {up_err}")
 
@@ -526,7 +528,7 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 if ((40 < grok_score < 60) or not grok_sources) and public_img_url:
                     print("[main] Inconclusive screenshot result. Searching Google Cloud Vision as last resort...")
                     try:
-                        database.log_request("[API] Google Cloud Vision", f"[Origin Search] ({img_filename})", 0, "info", cost=0.0015, api_name="VisionAPI")
+                        database.log_request("[API] Google Cloud Vision", f"[Origin Search] ({img_filename})", 0, "info", cost=0.0015, case_id=case_id, api_name="VisionAPI")
                         rev_search = reverse_image_search(public_img_url, is_global=False)
                         vision_sources = rev_search.get("pages", [])
                         rev_summary = rev_search.get("summary", "")
@@ -539,7 +541,7 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                         print(f"[main] Vision API integration error in screenshot: {e}")
                 
             latency = int((time.time() - start_time) * 1000)
-            log_id = database.log_request("/api/check-screenshot", f"[Screenshot Analysed] {img_filename}", latency, "success", cost=0.005)
+            log_id = database.log_request("/api/check-screenshot", f"[Screenshot Analysed] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
             
             # Supplement sources with reverse-image pages if Grok found none
             grok_sources = analysis_result.get("sources", [])
@@ -565,7 +567,7 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                 analysis += " ไม่พบข้อความหรือจุดสังเกตในภาพที่สามารถนำไปตรวจสอบต่อได้"
                 
             latency = int((time.time() - start_time) * 1000)
-            log_id = database.log_request("/api/check-screenshot", f"[No Extracted Text] {img_filename}", latency, "success", cost=0.005)
+            log_id = database.log_request("/api/check-screenshot", f"[No Extracted Text] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
             return {
                 "log_id": log_id,
                 "score": vision_result.get("score", 50),
@@ -576,7 +578,7 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
             }
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
-        database.log_request("/api/check-screenshot", "[Screenshot Error]", latency, "error", str(e))
+        database.log_request("/api/check-screenshot", "[Screenshot Error]", latency, "error", str(e), case_id=case_id)
         return {
             "log_id": -1,
             "score": 50,
