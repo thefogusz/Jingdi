@@ -431,11 +431,12 @@ async def check_image(files: List[UploadFile] = File(...)):
         raise
     except Exception as e:
         import traceback
-        traceback.print_exc() # Use standard print_exc instead of manual file writing that might cause OSError 22
+        traceback.print_exc()
+        error_details = traceback.format_exc()
         return {
             "log_id": -1,
             "score": 50,
-            "analysis": "ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบรูปภาพได้ในขณะนี้",
+            "analysis": f"ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบรูปภาพได้ในขณะนี้\n\nDEBUG INFO:\n{str(e)}\n{error_details}",
             "sources": [],
             "visual_indicators": [],
             "extracted_text": ""
@@ -585,12 +586,14 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-screenshot", "[Screenshot Error]", latency, "error", str(e), case_id=case_id)
         return {
             "log_id": -1,
             "score": 50,
-            "analysis": "ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบภาพ screenshot ได้ในขณะนี้",
+            "analysis": f"ระบบขัดข้องชั่วคราว: ไม่สามารถตรวจสอบภาพ screenshot ได้ในขณะนี้\n\nDEBUG INFO:\n{str(e)}\n{error_details}",
             "sources": [],
             "visual_indicators": [],
             "extracted_text": ""
