@@ -106,7 +106,7 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
     - analysis: A clear, concise explanation in Thai. 
     - claims_extracted: A list of the main factual claims made in the text (in Thai).
     - suspicious_words: A list of emotionally manipulative or sensationalist words used in the text (in Thai).
-    - sources: An array of source objects [{'title': '...', 'snippet': '...', 'link': '...'}] from your Google Search.
+    - sources: An array of source objects [{{'title': '...', 'snippet': '...', 'link': '...'}}] from your Google Search.
     
     Return ONLY valid JSON.
     """
