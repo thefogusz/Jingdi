@@ -96,6 +96,7 @@ const BRAND_COLORS: Record<string, { bg: string; border: string; text: string; d
   SerpApi:   { bg: 'rgba(251,191,36,0.12)',  border: 'rgba(251,191,36,0.35)',  text: '#fcd34d', dot: '#fbbf24' },
   VisionAPI: { bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.35)',  text: '#6ee7b7', dot: '#34d399' },
   Tavily:    { bg: 'rgba(236,72,153,0.12)',  border: 'rgba(236,72,153,0.35)',  text: '#f9a8d4', dot: '#ec4899' },
+  Cloudflare:{ bg: 'rgba(249,115,22,0.12)',  border: 'rgba(249,115,22,0.35)',  text: '#fdba74', dot: '#f97316' },
 };
 
 function BrandBadge({ name }: { name: string }) {

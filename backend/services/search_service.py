@@ -314,7 +314,11 @@ def _scrape_with_cloudflare(url: str) -> str:
                         if len(extracted_text) < 100:
                             extracted_text = soup.get_text(separator=' ', strip=True)
                             
+                            
                         print(f"[Cloudflare Scraper] Success. Extracted {len(extracted_text)} characters.")
+                        import database
+                        # Cloudflare Browser Rendering API pricing is $0.009 per response
+                        database.log_request("[API] Cloudflare Scraper", url[:100], 0, "info", cost=0.009, case_id=None, api_name="Cloudflare")
                         return extracted_text
     except Exception as e:
         print(f"[Cloudflare Scraper] Error: {e}")
