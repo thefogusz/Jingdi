@@ -2,7 +2,7 @@ import os
 import asyncio
 import aiohttp
 from typing import List
-from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -611,10 +611,33 @@ async def admin_stats(req: Request):
         raise HTTPException(status_code=403, detail="Forbidden")
     return database.get_dashboard_stats()
 
+async def process_feedback_learning(log_id: int, is_helpful: bool, reason: str, details: str):
+    """Background task to analyze root cause of incorrect AI analysis."""
+    if is_helpful:
+        return # Currently only learn from mistakes to improve accuracy
+    
+    try:
+        from services.llm_service import analyze_root_cause
+        claim = database.get_log_query(log_id)
+        # Fetching the original response would require another DB column or parsing logs. 
+        # For now, we'll let analyze_root_cause use the claim and the user reason.
+        if claim and reason:
+            lesson = analyze_root_cause(claim, "Previously incorrect analysis", f"{reason}: {details}")
+            if lesson:
+                database.update_feedback_lesson(log_id, lesson)
+                print(f"[Self-Learning] Extracted lesson for log {log_id}: {lesson}")
+    except Exception as e:
+        print(f"[Self-Learning] Error in background task: {e}")
+
 @app.post("/api/feedback")
-def submit_feedback(req: FeedbackRequest):
+def submit_feedback(req: FeedbackRequest, background_tasks: BackgroundTasks):
     try:
         database.save_feedback(req.log_id, req.is_helpful, req.reason, req.details)
+        
+        # Trigger learning loop for negative feedback
+        if not req.is_helpful:
+            background_tasks.add_task(process_feedback_learning, req.log_id, req.is_helpful, req.reason, req.details)
+            
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

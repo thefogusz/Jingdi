@@ -51,6 +51,15 @@ def _ensure_columns():
         conn.commit()
     except Exception:
         pass # Already exists
+    # ai_lesson_learned for self-learning loop in user_feedback
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE user_feedback ADD COLUMN ai_lesson_learned TEXT")
+        else:
+             cur.execute("ALTER TABLE user_feedback ADD COLUMN IF NOT EXISTS ai_lesson_learned TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
         
     cur.close()
     conn.close()
@@ -145,6 +154,50 @@ def save_feedback(log_id: int, is_helpful: bool, reason: str = "", details: str 
     except Exception as e:
         print(f"Feedback logging error: {e}")
 
+def update_feedback_lesson(log_id: int, lesson: str):
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        _execute(cur, '''
+            UPDATE user_feedback 
+            SET ai_lesson_learned = %s 
+            WHERE log_id = %s
+        ''', (lesson, log_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error updating feedback lesson: {e}")
+
+def get_active_lessons(limit: int = 3):
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        _execute(cur, '''
+            SELECT ai_lesson_learned
+            FROM user_feedback
+            WHERE ai_lesson_learned IS NOT NULL AND ai_lesson_learned != ''
+            ORDER BY id DESC LIMIT %s
+        ''', (limit,))
+        lessons = [r[0] for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return lessons
+    except Exception as e:
+        print(f"Error fetching active lessons: {e}")
+        return []
+
+def get_log_query(log_id: int):
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        _execute(cur, 'SELECT query FROM api_logs WHERE id = %s', (log_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row[0] if row else ""
+    except Exception:
+        return ""
 
 def get_dashboard_stats():
     try:

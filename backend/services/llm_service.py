@@ -63,6 +63,54 @@ grok_client = OpenAI(
     base_url="https://api.x.ai/v1",
 ) if xai_api_key else None
 
+def _inject_lessons(system_prompt: str) -> str:
+    """Inject lessons learned from past feedback into the system prompt."""
+    try:
+        from . import database
+        lessons = database.get_active_lessons(limit=3)
+        if lessons:
+            lessons_text = "\n".join([f"- {l}" for l in lessons])
+            injection = f"\n\n[Active Lessons Learned from Past Mistakes]\nNEVER REPEAT THESE VERIFIED HISTORICAL ERRORS:\n{lessons_text}\n"
+            return system_prompt + injection
+    except Exception:
+        pass
+    return system_prompt
+
+def analyze_root_cause(claim: str, original_response: str, user_reason: str) -> str:
+    """Analyze why a previous response was incorrect and extract a lesson learned."""
+    gemini_client = get_next_client()
+    if not gemini_client:
+        return ""
+        
+    reflection_prompt = f"""
+    You are a Fact-Check Quality Auditor. 
+    You previously analyzed this claim: "{claim}"
+    Your response was: "{original_response}"
+    The Human Admin marked this as HELPFUL: False. 
+    Admin's Reason for failure: "{user_reason}"
+    
+    TASK: Focus on the TRUTH. Analyze exactly why your logic or evidence gathering failed. 
+    Was the source fake? Did you miss the context? Did you hallucinate?
+    Return a concise 1-sentence "Lesson Learned" for your future self to avoid this exact error.
+    Format your response as a direct instruction starting with "Always..." or "Never...".
+    """
+    
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=reflection_prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.0
+            )
+        )
+        lesson = response.text.strip()
+        # Clean up any quotes or markdown
+        lesson = lesson.replace("**", "").replace('"', '').replace("'", "")
+        return lesson
+    except Exception as e:
+        print(f"Error in analyze_root_cause: {e}")
+        return ""
+
 def analyze_text_claim(text: str, search_context: str = "") -> dict:
     """Analyze a text claim using Gemini, optionally with DuckDuckGo search context."""
     gemini_client = get_next_client()
@@ -110,6 +158,7 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
     
     Return ONLY valid JSON.
     """
+    prompt = _inject_lessons(prompt)
 
     for attempt in range(4):
         gemini_client = get_next_client()
@@ -259,10 +308,13 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     """
 
     try:
+        system_msg = "You are a highly accurate fake news detection AI with access to the live internet. You MUST search the web to verify claims. You respond with valid JSON only in the format: {\"score\": 50, \"analysis\": \"...\", \"claims_extracted\": [], \"suspicious_words\": [], \"sources\": [{\"title\":\"\",\"snippet\":\"\",\"link\":\"\"}]}"
+        system_msg = _inject_lessons(system_msg)
+        
         response = grok_client.chat.completions.create(
             model="grok-4-1-fast-reasoning",
             messages=[
-                {"role": "system", "content": "You are a highly accurate fake news detection AI with access to the live internet. You MUST search the web to verify claims. You respond with valid JSON only in the format: {\"score\": 50, \"analysis\": \"...\", \"claims_extracted\": [], \"suspicious_words\": [], \"sources\": [{\"title\":\"\",\"snippet\":\"\",\"link\":\"\"}]}"},
+                {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
@@ -370,7 +422,7 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "", log
         response = grok_client.chat.completions.create(
             model="grok-vision-beta",
             messages=[
-                {"role": "system", "content": (
+                {"role": "system", "content": _inject_lessons(
                     "You are a highly accurate fact-checker with vision and live web search. "
                     "IMPORTANT: Thai news graphics use clickbait BACKGROUND PHOTOS unrelated to the actual story. "
                     "The REAL STORY is always in the HEADLINE TEXT OVERLAY. "
