@@ -173,8 +173,8 @@ def check_url(payload: UrlCheckRequest, request: Request):
         if is_social:
             print(f"[check-url] Social media URL detected: using Crawl APIs — {cleaned_url}")
             crawl_res = crawl_url(cleaned_url)
-            crawled_text = crawl_res.get("text", "")
-            crawled_title = crawl_res.get("title", "")
+            crawled_text = crawl_res.get("text", "") or scraped.get("text", "")
+            crawled_title = crawl_res.get("title", "") or scraped.get("title", "")
             
             # Smart search query selection
             # If we have a good title, search for that title + platform for context

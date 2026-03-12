@@ -388,42 +388,64 @@ def _is_social_url(url: str) -> bool:
 
 def scrape_url(url: str) -> dict:
     """Scrape basic text content from a URL with social media workarounds."""
+    is_social = _is_social_url(url)
     cleaned_url = _optimize_social_url(url)
+    
     try:
-        parsed = urlparse(cleaned_url)
-        # remove common tracking parameters
-        TRACKING_PARAMS = {"fbclid", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "ref", "_fb_noscript"}
-        qs = parse_qs(parsed.query, keep_blank_values=True)
-        cleaned_qs = {k: v for k, v in qs.items() if k not in TRACKING_PARAMS and not k.startswith("aem_")}
-        cleaned_url = urlunparse(parsed._replace(query=urlencode(cleaned_qs, doseq=True)))
-    except Exception:
-        pass
-
-    # If it's social media, we flag it so main.py can choose to use Crawl API or Grok directly
-    is_social = _is_social_url(cleaned_url)
-    if is_social:
-        return {"title": "Social Media Post", "text": "", "cleaned_url": cleaned_url, "is_social_url": True}
-
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        res = requests.get(cleaned_url, headers=headers, timeout=10)
+        # Use a minimal User-Agent. Complex ones (like Chrome 120) sometimes trigger 400 errors on FB share redirects.
+        headers = {"User-Agent": "Mozilla/5.0"}
+        
+        # 1. Try metadata extraction on the ORIGINAL URL first (often works better for share links)
+        # We try original because m.facebook.com often returns 400 for share redirects
+        res = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        
+        # If 400/403, fallback to optimized (mobile) URL
+        if res.status_code in [400, 403]:
+            res = requests.get(cleaned_url, headers=headers, timeout=10, allow_redirects=True)
+            
         res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # Base title/text
         title = soup.title.string.strip() if soup.title else ""
         paragraphs = soup.find_all('p')
         text = " ".join([p.get_text() for p in paragraphs]).strip()
 
-        if len(text) < 100:
+        # Meta tag fallback (Crucial for Social Media)
+        og_title = soup.find("meta", property="og:title") or soup.find("meta", name="twitter:title")
+        og_desc = soup.find("meta", property="og:description") or soup.find("meta", name="twitter:description")
+        
+        if og_title: 
+            title = og_title.get("content", "").strip()
+        if og_desc: 
+            text = og_desc.get("content", "").strip()
+
+        if is_social:
+            # If we still have nothing, maybe hint at why
+            if not text and title:
+                text = f"Content restricted or hidden. Metadata hint: {title}"
+                
+            return {
+                "title": title or "Social Media Post", 
+                "text": text[:5000], 
+                "cleaned_url": cleaned_url, 
+                "is_social_url": True
+            }
+
+        # For normal sites, if content is thin, try Cloudflare
+        if not text or len(text) < 100:
             cf_text = _scrape_with_cloudflare(cleaned_url)
             if len(cf_text) > 200:
                 text = cf_text
-            else:
-                og_title = soup.find("meta", property="og:title") or soup.find("meta", name="twitter:title")
-                og_desc = soup.find("meta", property="og:description") or soup.find("meta", name="twitter:description")
-                if og_title and not title: title = og_title.get("content", "").strip()
-                if og_desc: text = og_desc.get("content", "").strip()
-                if (not text or len(text) < 20) and title: text = f"Content restricted or hidden. Title hint: {title}"
 
         return {"title": title, "text": text[:5000], "cleaned_url": cleaned_url, "is_social_url": False}
+        
     except Exception as e:
-        return {"error": str(e), "text": "", "title": "", "cleaned_url": cleaned_url, "is_social_url": False}
+        # Final desperate attempt: if it's social, just return placeholders
+        return {
+            "error": str(e), 
+            "text": "", 
+            "title": "Social Media Post", 
+            "cleaned_url": cleaned_url, 
+            "is_social_url": is_social
+        }
