@@ -322,7 +322,7 @@ async def get_admin_image(filename: str):
         return RedirectResponse(url=target_url)
 
 @app.post("/api/check-image")
-async def check_image(files: List[UploadFile] = File(...)):
+async def check_image(request: Request, files: List[UploadFile] = File(...)):
     case_id = str(uuid.uuid4())
     try:
         check_kill_switch()
