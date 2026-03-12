@@ -114,10 +114,12 @@ function BrandBadge({ name }: { name: string }) {
 }
 
 function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size?: "sm" | "md" | "lg", r2BaseUrl?: string }) {
-  const m = query.match(/\(([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))\)/i) || 
-            query.match(/image:\s*([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
-            query.match(/\[Image Upload\]\s*([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
-            query.match(/([a-zA-Z0-9]{8,}\.(?:jpg|jpeg|png|webp|gif))/i);
+  // Enhanced regex to catch various formats including the new [Image Upload] format
+  const m = query.match(/\[Image Upload\]\s*([a-zA-Z0-9._-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
+            query.match(/image:\s*([a-zA-Z0-9._-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
+            query.match(/\(([a-zA-Z0-9._-]+\.(?:jpg|jpeg|png|webp|gif))\)/i) ||
+            query.match(/\b([a-zA-Z0-9]{8,}\.(?:jpg|jpeg|png|webp|gif))\b/i);
+            
   if (!m) return <span className="truncate flex-1">{query}</span>;
 
   const filename = m[1];
@@ -127,7 +129,8 @@ function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size
     .replace('Headline/Text extracted from image:', '')
     .replace('Image processing', '')
     .replace('()', '')
-    .replace('[', '').replace(']', '')
+    .replace('[]', '')
+    .replace(/\[\s*\]/, '')
     .replace(/:$/, '')
     .trim();
 
