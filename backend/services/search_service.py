@@ -41,14 +41,50 @@ def search_tavily(query: str, max_results: int = 10) -> list:
         return results
     except Exception as e:
         print(f"[Tavily] Exception: {e}")
-        return []
+def _optimize_social_url(url: str) -> str:
+    """Redirect social URLs to mobile or alternative frontends for better scraping."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        if "twitter.com" in domain or "x.com" in domain:
+            new_domain = domain.replace("twitter.com", "vxtwitter.com").replace("x.com", "vxtwitter.com")
+            return urlunparse(parsed._replace(netloc=new_domain))
+        elif "facebook.com" in domain and "m.facebook.com" not in domain:
+            new_domain = "m.facebook.com"
+            return urlunparse(parsed._replace(netloc=new_domain))
+    except Exception:
+        pass
+    return url
 
 def crawl_url(url: str) -> dict:
-    """Crawl a URL using Tavily Extract API to bypass bot protection/login walls."""
+    """Crawl a URL prioritizing Cloudflare Crawl API, then fallback to Tavily."""
+    # Pre-optimize for social media
+    optimized_url = _optimize_social_url(url)
+    
+    # 1. Try Cloudflare first (as requested by user)
+    cf_text = _scrape_with_cloudflare(optimized_url)
+    if cf_text and len(cf_text) > 100:
+        # Extract title from the formatted string "Title: ...\n\nContent"
+        title = "Extracted Page"
+        clean_text = cf_text
+        if cf_text.startswith("Title: "):
+            parts = cf_text.split("\n\n", 1)
+            title = parts[0].replace("Title: ", "").strip()
+            clean_text = parts[1] if len(parts) > 1 else ""
+            
+        return {
+            "title": title,
+            "text": clean_text[:10000],
+            "error": None,
+            "source": "Cloudflare"
+        }
+
+    # 2. Fallback to Tavily if Cloudflare fails or is unconfigured
     if not TAVILY_API_KEY:
-        return {"text": "", "error": "Tavily API Key not configured"}
+        return {"text": "", "error": "Crawl APIs not configured (Cloudflare/Tavily)"}
+
     try:
-        print(f"[Crawl] Using Tavily Extract for: {url}")
+        print(f"[Crawl] Falling back to Tavily Extract for: {url}")
         payload = {
             "api_key": TAVILY_API_KEY,
             "urls": [url]
@@ -62,27 +98,26 @@ def crawl_url(url: str) -> dict:
         if not results:
             return {"text": "", "error": "No content extracted"}
             
-        # Extract the content (usually returned as Markdown or text)
         content = results[0].get("raw_content", "")
         title = results[0].get("title", "") or "Extracted Page"
         
         return {
             "title": title,
-            "text": content[:10000],  # Limit to 10k chars
-            "error": None
+            "text": content[:10000],
+            "error": None,
+            "source": "Tavily"
         }
     except Exception as e:
-        print(f"[Crawl] Exception: {e}")
+        print(f"[Crawl] Tavily Exception: {e}")
         return {"text": "", "error": str(e)}
 
 def _scrape_with_cloudflare(url: str) -> str:
-    """Use Cloudflare Browser Rendering to scrape JS-heavy sites."""
-    # API configuration from env
-    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+    """Use Cloudflare Browser Rendering Crawl API (Beta) to scrape content and meta."""
+    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID") or os.getenv("R2_ACCOUNT_ID")
     api_token = os.getenv("CLOUDFLARE_API_TOKEN")
     
     if not account_id or not api_token:
-        print("[Cloudflare Scraper] Missing credentials. Skipping.")
+        print("[Cloudflare Scraper] Missing credentials. Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in .env")
         return ""
 
     headers = {
@@ -91,34 +126,46 @@ def _scrape_with_cloudflare(url: str) -> str:
     }
     
     try:
-        # User explicitly mentioned Cloudflare's /crawl API (Beta)
-        # Endpoint: POST /accounts/{account_id}/crawl
-        cf_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/crawl"
+        # Step 1: Start the crawl
+        cf_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/browser-rendering/crawl"
         payload = {
             "url": url,
             "format": "markdown",
-            "max_pages": 1
+            "maxDepth": 0, # Only the current page
+            "limit": 1
         }
-        res = requests.post(cf_url, headers=headers, json=payload, timeout=15)
+        print(f"[Cloudflare Crawl] Starting crawl for: {url}")
+        res = requests.post(cf_url, headers=headers, json=payload, timeout=10)
         
-        if res.status_code == 200:
-            data = res.json()
-            # Based on CF /crawl beta specs, content is usually in the result
-            return data.get("result", {}).get("content", "")
+        if res.status_code != 200:
+            print(f"[Cloudflare Crawl] Error {res.status_code}: {res.text}")
+            return ""
             
-        # Fallback to AI-based extraction if /crawl fails or is restricted
-        res = requests.post(
-            f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/google/gemma-7b-it-lora",
-            headers=headers,
-            json={"prompt": f"Extract the raw text and meaning from this URL: {url}"},
-            timeout=15
-        )
-        if res.status_code == 200:
-            data = res.json()
-            return str(data.get("result", {}).get("response", ""))
-            
+        job_data = res.json()
+        job_id = job_data.get("result", {}).get("id")
+        if not job_id:
+            return ""
+
+        # Step 2: Poll for results (since it's async)
+        # For a user-facing check-url, we can only afford a few seconds.
+        max_retries = 6
+        for i in range(max_retries):
+            time.sleep(2)
+            print(f"[Cloudflare Crawl] Polling job {job_id} (Attempt {i+1})...")
+            poll_res = requests.get(f"{cf_url}/{job_id}", headers=headers, timeout=10)
+            if poll_res.status_code == 200:
+                results = poll_res.json().get("result", {})
+                if results.get("status") == "completed":
+                    pages = results.get("pages", [])
+                    if pages:
+                        content = pages[0].get("content", "")
+                        metadata = pages[0].get("metadata", {})
+                        title = metadata.get("title", "")
+                        return f"Title: {title}\n\n{content}"
+                    break
+        
     except Exception as e:
-        print(f"[Cloudflare Scraper] Error: {e}")
+        print(f"[Cloudflare Scraper] Exception: {e}")
         
     return ""
 
@@ -341,23 +388,16 @@ def _is_social_url(url: str) -> bool:
 
 def scrape_url(url: str) -> dict:
     """Scrape basic text content from a URL with social media workarounds."""
-    TRACKING_PARAMS = {"fbclid", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "ref", "_fb_noscript"}
-    cleaned_url = url
+    cleaned_url = _optimize_social_url(url)
     try:
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        if "twitter.com" in domain or "x.com" in domain:
-            new_domain = domain.replace("twitter.com", "vxtwitter.com").replace("x.com", "vxtwitter.com")
-            cleaned_url = urlunparse(parsed._replace(netloc=new_domain))
-        elif "facebook.com" in domain and "m.facebook.com" not in domain:
-            new_domain = "m.facebook.com"
-            cleaned_url = urlunparse(parsed._replace(netloc=new_domain))
-        else:
-            qs = parse_qs(parsed.query, keep_blank_values=True)
-            cleaned_qs = {k: v for k, v in qs.items() if k not in TRACKING_PARAMS and not k.startswith("aem_")}
-            cleaned_url = urlunparse(parsed._replace(query=urlencode(cleaned_qs, doseq=True)))
+        parsed = urlparse(cleaned_url)
+        # remove common tracking parameters
+        TRACKING_PARAMS = {"fbclid", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "ref", "_fb_noscript"}
+        qs = parse_qs(parsed.query, keep_blank_values=True)
+        cleaned_qs = {k: v for k, v in qs.items() if k not in TRACKING_PARAMS and not k.startswith("aem_")}
+        cleaned_url = urlunparse(parsed._replace(query=urlencode(cleaned_qs, doseq=True)))
     except Exception:
-        cleaned_url = url
+        pass
 
     # If it's social media, we flag it so main.py can choose to use Crawl API or Grok directly
     is_social = _is_social_url(cleaned_url)
