@@ -112,11 +112,13 @@ function BrandBadge({ name }: { name: string }) {
 
 function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size?: "sm" | "md" | "lg", r2BaseUrl?: string }) {
   const m = query.match(/\(([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))\)/i) || 
-            query.match(/image:\s*([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))/i);
+            query.match(/image:\s*([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
+            query.match(/\[Image Upload\]\s*([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
+            query.match(/([a-zA-Z0-9]{8,}\.(?:jpg|jpeg|png|webp|gif))/i);
   if (!m) return <span className="truncate flex-1">{query}</span>;
 
   const filename = m[1];
-  const imgUrl = r2BaseUrl ? `${r2BaseUrl}/${filename}` : `/api/admin/image/${filename}`;
+  const imgUrl = `/api/admin/image/${filename}`;
   const cleanText = query
     .replace(m[0], '')
     .replace('Headline/Text extracted from image:', '')
