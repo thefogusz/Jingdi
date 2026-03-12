@@ -172,17 +172,33 @@ def check_url(payload: UrlCheckRequest, request: Request):
 
         if is_social:
             print(f"[check-url] Social media URL detected: using Crawl APIs — {cleaned_url}")
-            crawl_res = crawl_url(cleaned_url) # Tavily Extract + Cloudflare Scraper inside
+            crawl_res = crawl_url(cleaned_url)
             crawled_text = crawl_res.get("text", "")
-            search_context = ""
-            if not crawled_text:
-                search_context = search_web(cleaned_url, case_id)
+            crawled_title = crawl_res.get("title", "")
             
-            social_prompt = f"""Fact-check this {_detect_platform(cleaned_url)} post: {cleaned_url}
+            # Smart search query selection
+            # If we have a good title, search for that title + platform for context
+            # If not, search for the URL itself
+            platform = _detect_platform(cleaned_url)
+            search_query = cleaned_url
+            if crawled_title and len(crawled_title) > 10 and "Facebook" not in crawled_title:
+                search_query = f"{crawled_title} {platform}"
+            
+            search_context = search_web(search_query, case_id)
+            
+            social_prompt = f"""Fact-check this {platform} post: {cleaned_url}
+Title/Headline: {crawled_title or 'N/A'}
 Extracted Content: {crawled_text or 'Direct extraction failed. Use search grounding.'}
-1. Identify the core claim. 2. Verify with sources. 3. Format with 3-4 bullet points."""
+
+INSTRUCTION: 
+1. Use the provided search context to verify the claims in the extracted content.
+2. If extraction failed, identify the post content from the search snippets.
+3. Determine if the news is real, fake, or missing context.
+4. Format with 3-4 bullet points in Thai."""
+
             database.log_request("[API] Grok 4.1 Reasoning", f"[Social URL] {cleaned_url[:80]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
-            analysis_result = analyze_with_grok(social_prompt, search_context=search_context)
+            analysis_result = analyze_with_grok(social_prompt, search_context=str(search_context))
+            
             latency = int((time.time() - start_time) * 1000)
             log_id = database.log_request("/api/check-url", payload.url[:100], latency, "success", cost=0.0005, case_id=case_id)
             return {
