@@ -61,6 +61,18 @@ def _ensure_columns():
     except Exception:
         pass # Already exists
         
+    # ip_address and user_agent for visitor analytics
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN ip_address TEXT")
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN user_agent TEXT")
+        else:
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS ip_address TEXT")
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS user_agent TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
+        
     cur.close()
     conn.close()
 
@@ -109,7 +121,8 @@ def init_db():
 
 def log_request(endpoint: str, query: str, latency_ms: int, status: str,
                 error_message: str = "", cost: float = 0.0,
-                case_id: str = None, api_name: str = None) -> int:
+                case_id: str = None, api_name: str = None,
+                ip_address: str = None, user_agent: str = None) -> int:
     try:
         conn = _get_conn()
         cur = conn.cursor()
@@ -118,11 +131,11 @@ def log_request(endpoint: str, query: str, latency_ms: int, status: str,
         query_str = '''
             INSERT INTO api_logs
                 (timestamp, endpoint, query, latency_ms, status, error_message,
-                 estimated_cost_usd, case_id, api_name)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 estimated_cost_usd, case_id, api_name, ip_address, user_agent)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         '''
         
-        args = (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name)
+        args = (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name, ip_address, user_agent)
 
         if _is_sqlite():
             _execute(cur, query_str, args)

@@ -143,7 +143,14 @@ async def check_text(request: TextCheckRequest):
 
             
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-text", request.text[:100], latency, "success", cost=0.0001, case_id=case_id)
+        
+        # Capture visitor metadata
+        ip_addr = request.client.host if request.client else "unknown"
+        ua = request.headers.get("user-agent", "unknown")
+        
+        log_id = database.log_request("/api/check-text", request.text[:100], latency, "success", 
+                                     cost=0.0001, case_id=case_id, 
+                                     ip_address=ip_addr, user_agent=ua)
         
         return {
             "log_id": log_id,
@@ -230,7 +237,13 @@ def check_url(request: UrlCheckRequest):
             analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
         
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-url", request.url[:100], latency, "success", cost=0.0001, case_id=case_id)
+        
+        ip_addr = request.client.host if request.client else "unknown"
+        ua = request.headers.get("user-agent", "unknown")
+        
+        log_id = database.log_request("/api/check-url", request.url[:100], latency, "success", 
+                                     cost=0.0001, case_id=case_id,
+                                     ip_address=ip_addr, user_agent=ua)
 
         return {
             "log_id": log_id,
@@ -417,7 +430,13 @@ async def check_image(files: List[UploadFile] = File(...)):
             ]
 
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-image", f"[Image Upload] ({img_filename})", latency, "success", cost=0.005, case_id=case_id)
+        
+        ip_addr = request.client.host if request.client else "unknown"
+        ua = request.headers.get("user-agent", "unknown")
+        
+        log_id = database.log_request("/api/check-image", f"[Image Upload] ({img_filename})", latency, "success", 
+                                     cost=0.005, case_id=case_id,
+                                     ip_address=ip_addr, user_agent=ua)
 
         return {
             "log_id": log_id,
