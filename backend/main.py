@@ -255,7 +255,7 @@ async def check_image(request: Request, files: List[UploadFile] = File(...)):
             analysis_result = analyze_with_grok(f"Verify image: {extracted_text}", str(search_context))
             
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-image", "[Image]", latency, "success", cost=0.005, case_id=case_id)
+        log_id = database.log_request("/api/check-image", f"[Image Upload] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
         return {
             "log_id": log_id,
             "score": analysis_result.get("score", 50),
@@ -274,8 +274,13 @@ async def check_screenshot(request: Request, files: List[UploadFile] = File(...)
     start_time = time.time()
     try:
         contents = [await file.read() for file in files]
+        img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
+        public_img_url = upload_image(img_filename, contents[0])
+        
         vision_result = analyze_images_with_vision(contents, is_screenshot=True)
         text = vision_result.get("extracted_text", "")
+        
+        rev_search = reverse_image_search(public_img_url) if public_img_url else {}
         search_context = search_web(text, case_id) if text else []
         analysis_result = analyze_text_claim(text, search_context=search_context)
         
@@ -283,7 +288,7 @@ async def check_screenshot(request: Request, files: List[UploadFile] = File(...)
             analysis_result = analyze_with_grok(f"Verify screenshot: {text}", search_context=search_context)
             
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-screenshot", "[Screenshot]", latency, "success", cost=0.005, case_id=case_id)
+        log_id = database.log_request("/api/check-screenshot", f"[Image Upload] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
         return {
             "log_id": log_id, "score": analysis_result.get("score", 50),
             "analysis": analysis_result.get("analysis", ""), "sources": analysis_result.get("sources", []),
