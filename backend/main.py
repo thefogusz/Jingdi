@@ -98,19 +98,18 @@ def verify_turnstile(token: str):
         print(f"[Turnstile] Verification error (allowing through): {e}")
 
 @app.post("/api/check-text")
-async def check_text(request: TextCheckRequest):
+async def check_text(payload: TextCheckRequest, request: Request):
     check_kill_switch()
     # verify_turnstile(request.cf_token) # Temporarily disabled to fix 400 error
     start_time = time.time()
     case_id = str(uuid.uuid4())
     try:
         # Tier 0 & 1: Concurrent RSS Pre-Check & Web Search
-        from services.search_service import extract_keywords
-        keywords = extract_keywords(request.text)
+        keywords = extract_keywords(payload.text)
         
         loop = asyncio.get_running_loop()
-        rss_task = loop.run_in_executor(None, search_rss_precheck, request.text, keywords)
-        web_task = loop.run_in_executor(None, search_web, request.text, case_id)
+        rss_task = loop.run_in_executor(None, search_rss_precheck, payload.text, keywords)
+        web_task = loop.run_in_executor(None, search_web, payload.text, case_id)
         
         rss_matches, search_context = await asyncio.gather(rss_task, web_task)
         
@@ -118,7 +117,7 @@ async def check_text(request: TextCheckRequest):
              search_context.insert(0, {"title": "🚨 VERIFIED FACT-CHECK (RSS)", "snippet": str(rss_matches), "url": "RSS_FEED"})
         
         # Smart Tier Routing: Detect complex inputs upfront — skip Gemini for complex cases
-        text = request.text
+        text = payload.text
         is_complex = (
             len(text) > 600 or                            # Long text → Grok
             text.count('\n') > 4 or                       # Multi-paragraph
@@ -148,7 +147,7 @@ async def check_text(request: TextCheckRequest):
         ip_addr = request.client.host if request.client else "unknown"
         ua = request.headers.get("user-agent", "unknown")
         
-        log_id = database.log_request("/api/check-text", request.text[:100], latency, "success", 
+        log_id = database.log_request("/api/check-text", payload.text[:100], latency, "success", 
                                      cost=0.0001, case_id=case_id, 
                                      ip_address=ip_addr, user_agent=ua)
         
@@ -165,7 +164,7 @@ async def check_text(request: TextCheckRequest):
         raise
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
-        database.log_request("/api/check-text", request.text[:100], latency, "error", str(e), case_id=case_id)
+        database.log_request("/api/check-text", payload.text[:100], latency, "error", str(e), case_id=case_id)
         return {
             "log_id": -1,
             "score": 50,
@@ -177,23 +176,23 @@ async def check_text(request: TextCheckRequest):
         }
 
 @app.post("/api/check-url")
-def check_url(request: UrlCheckRequest):
+def check_url(payload: UrlCheckRequest, request: Request):
     check_kill_switch()
     start_time = time.time()
     case_id = str(uuid.uuid4())
     try:
         # Scrape the URL
-        scraped = scrape_url(request.url)
-        cleaned_url = scraped.get('cleaned_url', request.url)
+        scraped = scrape_url(payload.url)
+        cleaned_url = scraped.get('cleaned_url', payload.url)
         
         # Tier 1: Free Search + Gemini
         search_query = scraped.get('title', '') or cleaned_url
         if not search_query or search_query == 'N/A': search_query = cleaned_url
         
         # Enrich search query for social platforms
-        is_social = any(domain in request.url.lower() for domain in ["facebook.com", "x.com", "twitter.com", "tiktok.com", "instagram.com"])
+        is_social = any(domain in payload.url.lower() for domain in ["facebook.com", "x.com", "twitter.com", "tiktok.com", "instagram.com"])
         if is_social:
-            platform = "Facebook" if "facebook" in request.url.lower() else "X/Twitter"
+            platform = "Facebook" if "facebook" in payload.url.lower() else "X/Twitter"
             search_query = f"{platform} post: {search_query}"
             print(f"[main] Social media URL detected. Enriched search query: {search_query}")
 
@@ -206,7 +205,7 @@ def check_url(request: UrlCheckRequest):
         if rss_matches:
              combined_context = f"🚨 VERIFIED FACT-CHECK (RSS): {str(rss_matches)}\n\n" + combined_context
              
-        database.log_request("[API] Gemini Text", request.url[:100], 0, "info", cost=0.0002, case_id=case_id, api_name="Gemini")
+        database.log_request("[API] Gemini Text", payload.url[:100], 0, "info", cost=0.0002, case_id=case_id, api_name="Gemini")
         analysis_result = analyze_text_claim(f"Verify this article: {cleaned_url} - {scraped.get('title', 'N/A')}", search_context=combined_context)
         score = analysis_result.get("score", 50)
         
@@ -246,7 +245,7 @@ def check_url(request: UrlCheckRequest):
             4. EVIDENCE OF SEARCH & MISSING DATA: You MUST explicitly state the breadth of your search. If you CANNOT find real evidence, state clearly: "**จากการตรวจสอบแหล่งข้อมูลข่าวที่น่าเชื่อถือหลัก** ไม่พบรายงานที่ยืนยันเรื่องนี้ได้"
             5. SOURCES: You MUST populate the `sources` JSON array. Format: [{{"title": "Headline", "snippet": "Quote", "link": "EXACT_WORKING_URL"}}]. CRITICAL: If you do not have the exact, working URL from a real news source, you MUST provide a Google search link to find it, formatted exactly like: "https://www.google.com/search?q=Keywords". NEVER hallucinate broken URLs or fake domains.
             """
-            database.log_request("[API] Grok 4.1 Reasoning", request.url[:100], 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
+            database.log_request("[API] Grok 4.1 Reasoning", payload.url[:100], 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
             analysis_result = analyze_with_grok(prompt_for_grok, search_context=search_context)
         
         latency = int((time.time() - start_time) * 1000)
@@ -254,7 +253,7 @@ def check_url(request: UrlCheckRequest):
         ip_addr = request.client.host if request.client else "unknown"
         ua = request.headers.get("user-agent", "unknown")
         
-        log_id = database.log_request("/api/check-url", request.url[:100], latency, "success", 
+        log_id = database.log_request("/api/check-url", payload.url[:100], latency, "success", 
                                      cost=0.0001, case_id=case_id,
                                      ip_address=ip_addr, user_agent=ua)
 
@@ -271,7 +270,7 @@ def check_url(request: UrlCheckRequest):
         raise
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
-        database.log_request("/api/check-url", request.url[:100], latency, "error", str(e), case_id=case_id)
+        database.log_request("/api/check-url", payload.url[:100], latency, "error", str(e), case_id=case_id)
         return {
             "log_id": -1,
             "score": 50,
@@ -475,7 +474,7 @@ async def check_image(request: Request, files: List[UploadFile] = File(...)):
         }
 
 @app.post("/api/check-screenshot")
-async def check_screenshot(files: List[UploadFile] = File(...)):
+async def check_screenshot(request: Request, files: List[UploadFile] = File(...)):
     case_id = str(uuid.uuid4())
     check_kill_switch()
     start_time = time.time()
@@ -580,7 +579,14 @@ async def check_screenshot(files: List[UploadFile] = File(...)):
                         print(f"[main] Vision API integration error in screenshot: {e}")
                 
             latency = int((time.time() - start_time) * 1000)
-            log_id = database.log_request("/api/check-screenshot", f"[Screenshot Analysed] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
+            
+            # Capture visitor metadata
+            ip_addr = request.client.host if request.client else "unknown"
+            ua = request.headers.get("user-agent", "unknown")
+            
+            log_id = database.log_request("/api/check-screenshot", f"[Screenshot Analysed] {img_filename}", latency, "success", 
+                                         cost=0.005, case_id=case_id,
+                                         ip_address=ip_addr, user_agent=ua)
             
             # Supplement sources with reverse-image pages if Grok found none
             grok_sources = analysis_result.get("sources", [])
