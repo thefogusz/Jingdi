@@ -172,18 +172,34 @@ def check_url(payload: UrlCheckRequest, request: Request):
 
         if is_social:
             permanent_url = scraped.get('permanent_url', cleaned_url)
-            print(f"[check-url] Social media URL detected: using Crawl APIs — {permanent_url}")
+            is_placeholder = scraped.get('is_placeholder', False)
+            
+            print(f"[check-url] Social media URL detected: {permanent_url} (is_placeholder={is_placeholder})")
+            
+            # If it's a placeholder (login wall), we MUST crawl
             crawl_res = crawl_url(permanent_url)
-            crawled_text = crawl_res.get("text", "") or scraped.get("text", "")
-            crawled_title = crawl_res.get("title", "") or scraped.get("title", "")
+            
+            crawled_text = crawl_res.get("text", "")
+            crawled_title = crawl_res.get("title", "")
+            
+            # Fallback only if crawl actually failed OR if crawl returned something worse
+            if not crawled_text or len(crawled_text) < 50:
+                crawled_text = crawled_text or scraped.get("text", "")
+                crawled_title = crawled_title or scraped.get("title", "")
             
             # Smart search query selection
-            # If we have a good title, search for that title + platform for context
-            # If not, search for the URL itself
+            # Use the title if it's substantive, otherwise use a snippet of the text
             platform = _detect_platform(cleaned_url)
             search_query = cleaned_url
-            if crawled_title and len(crawled_title) > 10 and "Facebook" not in crawled_title:
+            
+            generic_titles = ["around the world", "facebook", "log into facebook", "twitter", "social media post"]
+            use_title = crawled_title and len(crawled_title) > 10 and crawled_title.lower() not in generic_titles
+            
+            if use_title:
                 search_query = f"{crawled_title} {platform}"
+            elif crawled_text and len(crawled_text) > 20:
+                # Use first 100 chars of text as query
+                search_query = crawled_text[:100].strip()
             
             search_context = search_web(search_query, case_id)
             

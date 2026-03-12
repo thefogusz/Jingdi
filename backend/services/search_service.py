@@ -129,10 +129,7 @@ def _scrape_with_cloudflare(url: str) -> str:
         # Step 1: Start the crawl
         cf_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/browser-rendering/crawl"
         payload = {
-            "url": url,
-            "format": "markdown",
-            "maxDepth": 0, # Only the current page
-            "limit": 1
+            "url": url
         }
         print(f"[Cloudflare Crawl] Starting crawl for: {url}")
         res = requests.post(cf_url, headers=headers, json=payload, timeout=10)
@@ -141,28 +138,46 @@ def _scrape_with_cloudflare(url: str) -> str:
             print(f"[Cloudflare Crawl] Error {res.status_code}: {res.text}")
             return ""
             
-        job_data = res.json()
-        job_id = job_data.get("result", {}).get("id")
+        job_json = res.json()
+        if not isinstance(job_json, dict):
+            print(f"[Cloudflare Crawl] Unexpected response type: {type(job_json)}")
+            return ""
+            
+        result_obj = job_json.get("result")
+        if not isinstance(result_obj, dict):
+            print(f"[Cloudflare Crawl] Unexpected result type: {type(result_obj)}")
+            return ""
+            
+        job_id = result_obj.get("id")
         if not job_id:
             return ""
 
         # Step 2: Poll for results (since it's async)
-        # For a user-facing check-url, we can only afford a few seconds.
         max_retries = 6
         for i in range(max_retries):
             time.sleep(2)
             print(f"[Cloudflare Crawl] Polling job {job_id} (Attempt {i+1})...")
             poll_res = requests.get(f"{cf_url}/{job_id}", headers=headers, timeout=10)
             if poll_res.status_code == 200:
-                results = poll_res.json().get("result", {})
-                if results.get("status") == "completed":
-                    pages = results.get("pages", [])
-                    if pages:
-                        content = pages[0].get("content", "")
-                        metadata = pages[0].get("metadata", {})
-                        title = metadata.get("title", "")
-                        return f"Title: {title}\n\n{content}"
-                    break
+                job_json = poll_res.json()
+                results = job_json.get("result")
+                
+                # result can be a dict or a string depending on status
+                if isinstance(results, dict):
+                    status = results.get("status")
+                    if status == "completed":
+                        pages = results.get("pages", [])
+                        if pages:
+                            content = pages[0].get("content", "")
+                            metadata = pages[0].get("metadata", {})
+                            title = metadata.get("title", "")
+                            return f"Title: {title}\n\n{content}"
+                        break
+                    elif status in ["error", "failed"]:
+                        print(f"[Cloudflare Crawl] Job failed: {results.get('error')}")
+                        return ""
+                elif isinstance(results, str) and results in ["error", "failed"]:
+                    return ""
         
     except Exception as e:
         print(f"[Cloudflare Scraper] Exception: {e}")
@@ -428,6 +443,12 @@ def scrape_url(url: str) -> dict:
         if og_desc: 
             text = og_desc.get("content", "").strip()
 
+        # Quality check: detect login walls or generic placeholders
+        is_placeholder = False
+        placeholders = ["log into facebook", "around the world", "login", "something went wrong", "log in"]
+        if title.lower() in placeholders or not text:
+            is_placeholder = True
+
         if is_social:
             # If we still have nothing, maybe hint at why
             if not text and title:
@@ -438,7 +459,8 @@ def scrape_url(url: str) -> dict:
                 "text": text[:5000], 
                 "cleaned_url": cleaned_url, 
                 "permanent_url": permanent_url,
-                "is_social_url": True
+                "is_social_url": True,
+                "is_placeholder": is_placeholder
             }
 
         # For normal sites, if content is thin, try Cloudflare
@@ -452,7 +474,8 @@ def scrape_url(url: str) -> dict:
             "text": text[:5000], 
             "cleaned_url": cleaned_url, 
             "permanent_url": permanent_url,
-            "is_social_url": False
+            "is_social_url": False,
+            "is_placeholder": is_placeholder
         }
         
     except Exception as e:
