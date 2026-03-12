@@ -189,6 +189,14 @@ def check_url(request: UrlCheckRequest):
         # Tier 1: Free Search + Gemini
         search_query = scraped.get('title', '') or cleaned_url
         if not search_query or search_query == 'N/A': search_query = cleaned_url
+        
+        # Enrich search query for social platforms
+        is_social = any(domain in request.url.lower() for domain in ["facebook.com", "x.com", "twitter.com", "tiktok.com", "instagram.com"])
+        if is_social:
+            platform = "Facebook" if "facebook" in request.url.lower() else "X/Twitter"
+            search_query = f"{platform} post: {search_query}"
+            print(f"[main] Social media URL detected. Enriched search query: {search_query}")
+
         search_context = search_web(search_query, case_id)
         
         # Tier 0: RSS Pre-Check
@@ -203,7 +211,12 @@ def check_url(request: UrlCheckRequest):
         score = analysis_result.get("score", 50)
         
         # Tier 2: Escalate to Grok Native Search
-        if (40 < score < 60) or not analysis_result.get("sources"):
+        # FORCE escalation for social media links if scraping was poor
+        poor_scrape = len(scraped.get('text', '')) < 100
+        if (40 < score < 60) or not analysis_result.get("sources") or (is_social and poor_scrape):
+            if is_social and poor_scrape:
+                print(f"[main] Poor scrape for social media link. Forcing escalation to Grok...")
+            
             title_hint = scraped.get('title', 'N/A')
             text_hint = scraped.get('text', '')
             prompt_for_grok = f"""

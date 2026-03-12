@@ -342,11 +342,20 @@ def scrape_url(url: str) -> dict:
                        "utm_term", "utm_content", "ref", "_fb_noscript"}
     try:
         parsed = urlparse(url)
-        qs = parse_qs(parsed.query, keep_blank_values=True)
-        # Remove any param whose key starts with a tracking prefix OR is in the exact set
-        cleaned_qs = {k: v for k, v in qs.items()
-                      if k not in TRACKING_PARAMS and not k.startswith("aem_")}
-        cleaned_url = urlunparse(parsed._replace(query=urlencode(cleaned_qs, doseq=True)))
+        domain = parsed.netloc.lower()
+        
+        # --- Social Media Workarounds ---
+        # Twitter/X blocking is aggressive. vxtwitter/fixupx often work better for meta scraping.
+        if "twitter.com" in domain or "x.com" in domain:
+            new_domain = domain.replace("twitter.com", "vxtwitter.com").replace("x.com", "vxtwitter.com")
+            cleaned_url = urlunparse(parsed._replace(netloc=new_domain))
+            print(f"[Scraper] X/Twitter detected. Using workaround: {cleaned_url}")
+        else:
+            qs = parse_qs(parsed.query, keep_blank_values=True)
+            # Remove any param whose key starts with a tracking prefix OR is in the exact set
+            cleaned_qs = {k: v for k, v in qs.items()
+                          if k not in TRACKING_PARAMS and not k.startswith("aem_")}
+            cleaned_url = urlunparse(parsed._replace(query=urlencode(cleaned_qs, doseq=True)))
     except Exception:
         cleaned_url = url  # If parsing fails, use original
 
@@ -369,14 +378,20 @@ def scrape_url(url: str) -> dict:
             if len(cf_text) > 200:
                 text = cf_text
             else:
-                og_title = soup.find("meta", property="og:title")
-                og_desc = soup.find("meta", property="og:description")
+                # Meta Extraction Cascade
+                og_title = soup.find("meta", property="og:title") or soup.find("meta", name="twitter:title")
+                og_desc = soup.find("meta", property="og:description") or soup.find("meta", name="twitter:description")
+                
                 if og_title and not title:
                     title = og_title.get("content", "").strip()
                 if og_desc:
                     og_text = og_desc.get("content", "").strip()
                     if og_text:
                         text = og_text  # At minimum we have a summary for Grok to work with
+                        
+                # Special Case: If it's a social link and we STILL have nothing, use the title as text
+                if (not text or len(text) < 20) and title:
+                    text = f"Content restricted or hidden. Title hint: {title}"
 
         return {"title": title, "text": text[:5000], "cleaned_url": cleaned_url}
     except Exception as e:
