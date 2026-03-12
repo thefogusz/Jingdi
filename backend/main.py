@@ -171,8 +171,9 @@ def check_url(payload: UrlCheckRequest, request: Request):
         is_social = scraped.get('is_social_url', False)
 
         if is_social:
-            print(f"[check-url] Social media URL detected: using Crawl APIs — {cleaned_url}")
-            crawl_res = crawl_url(cleaned_url)
+            permanent_url = scraped.get('permanent_url', cleaned_url)
+            print(f"[check-url] Social media URL detected: using Crawl APIs — {permanent_url}")
+            crawl_res = crawl_url(permanent_url)
             crawled_text = crawl_res.get("text", "") or scraped.get("text", "")
             crawled_title = crawl_res.get("title", "") or scraped.get("title", "")
             

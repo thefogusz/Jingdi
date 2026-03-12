@@ -414,7 +414,15 @@ def scrape_url(url: str) -> dict:
         # Meta tag fallback (Crucial for Social Media)
         og_title = soup.find("meta", property="og:title") or soup.find("meta", name="twitter:title")
         og_desc = soup.find("meta", property="og:description") or soup.find("meta", name="twitter:description")
+        og_url = soup.find("meta", property="og:url")
+        canonical = soup.find("link", rel="canonical")
         
+        permanent_url = url
+        if og_url and og_url.get("content"):
+            permanent_url = og_url.get("content").strip()
+        elif canonical and canonical.get("href"):
+            permanent_url = canonical.get("href").strip()
+
         if og_title: 
             title = og_title.get("content", "").strip()
         if og_desc: 
@@ -429,6 +437,7 @@ def scrape_url(url: str) -> dict:
                 "title": title or "Social Media Post", 
                 "text": text[:5000], 
                 "cleaned_url": cleaned_url, 
+                "permanent_url": permanent_url,
                 "is_social_url": True
             }
 
@@ -438,7 +447,13 @@ def scrape_url(url: str) -> dict:
             if len(cf_text) > 200:
                 text = cf_text
 
-        return {"title": title, "text": text[:5000], "cleaned_url": cleaned_url, "is_social_url": False}
+        return {
+            "title": title, 
+            "text": text[:5000], 
+            "cleaned_url": cleaned_url, 
+            "permanent_url": permanent_url,
+            "is_social_url": False
+        }
         
     except Exception as e:
         # Final desperate attempt: if it's social, just return placeholders
@@ -447,5 +462,6 @@ def scrape_url(url: str) -> dict:
             "text": "", 
             "title": "Social Media Post", 
             "cleaned_url": cleaned_url, 
+            "permanent_url": url,
             "is_social_url": is_social
         }
