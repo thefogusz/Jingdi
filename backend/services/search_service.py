@@ -7,7 +7,7 @@ from services.gemini_pool import get_next_client
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
 def search_tavily(query: str, max_results: int = 10) -> list:
-    """Search using Tavily AI Search API — extracts full content, no scraping needed."""
+    """Search using Tavily AI Search API."""
     if not TAVILY_API_KEY:
         return []
     try:
@@ -38,6 +38,39 @@ def search_tavily(query: str, max_results: int = 10) -> list:
     except Exception as e:
         print(f"[Tavily] Exception: {e}")
         return []
+
+
+def crawl_url(url: str) -> dict:
+    """Crawl a URL using Tavily Extract API to bypass bot protection/login walls."""
+    if not TAVILY_API_KEY:
+        return {"text": "", "error": "Tavily API Key not configured"}
+    try:
+        print(f"[Crawl] Using Tavily Extract for: {url}")
+        payload = {
+            "api_key": TAVILY_API_KEY,
+            "urls": [url]
+        }
+        res = requests.post("https://api.tavily.com/extract", json=payload, timeout=15)
+        if res.status_code != 200:
+            return {"text": "", "error": f"Tavily Error {res.status_code}"}
+        
+        data = res.json()
+        results = data.get("results", [])
+        if not results:
+            return {"text": "", "error": "No content extracted"}
+            
+        # Extract the content (usually returned as Markdown or text)
+        content = results[0].get("raw_content", "")
+        title = results[0].get("title", "") or "Extracted Page"
+        
+        return {
+            "title": title,
+            "text": content[:10000],  # Limit to 10k chars
+            "error": None
+        }
+    except Exception as e:
+        print(f"[Crawl] Exception: {e}")
+        return {"text": "", "error": str(e)}
 
 
 

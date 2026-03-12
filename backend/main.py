@@ -198,24 +198,41 @@ def check_url(request: UrlCheckRequest):
 
         # ── SOCIAL MEDIA FAST PATH ────────────────────────────────────────────
         if is_social:
-            print(f"[check-url] Social media URL: routing directly to Grok — {cleaned_url}")
+            print(f"[check-url] Social media URL detected: using Crawl API (Tavily Extract) — {cleaned_url}")
+            from services.search_service import crawl_url
+            
+            # Step 1: Attempt to crawl the content using Tavily Extract
+            crawl_res = crawl_url(cleaned_url)
+            crawled_text = crawl_res.get("text", "")
+            
+            # Step 2: Fallback to search if crawl failed or is empty
+            search_context = ""
+            if not crawled_text:
+                print(f"[check-url] Crawl failed, falling back to search context for: {cleaned_url}")
+                search_context = search_web(cleaned_url)
+            
             social_prompt = f"""The user wants to fact-check this social media post URL:
 {cleaned_url}
 
-IMPORTANT: This is a {_detect_platform(cleaned_url)} link. You MUST use your native web browsing / search capability to:
-1. Visit or search for the content of this URL directly.
-2. Identify the core claim or topic being posted.
-3. Search for credible news sources (Thai or English) that confirm or deny the claim.
+IMPORTANT: This is a {_detect_platform(cleaned_url)} link. 
+We attempted to extract its content directly and obtained:
+---
+{crawled_text if crawled_text else "Direct extraction failed. Please use your native web browsing or the search results below."}
+---
+
+INSTRUCTIONS:
+1. Identify the core claim or topic.
+2. Search for credible news sources (Thai or English) that confirm or deny the claim.
+3. If crawled text above is empty, YOU MUST use your native web browsing / search to see the post content.
 
 CRITICAL FORMATTING INSTRUCTION:
 1. CONCISENESS: Write 3-4 short bullet points max. Be direct and specific.
 2. NO URLS IN TEXT: No raw links inside `analysis`. Use only the `sources` array.
 3. Use **bold** for names, dates, keywords.
-4. If post is not accessible, explicitly say so and report what you found by searching for related claims.
-5. SOURCES: Populate `sources` array with real links. If unsure, use Google search link: https://www.google.com/search?q=...
+4. SOURCES: Populate `sources` array with real links. If unsure, use Google search link: https://www.google.com/search?q=...
 """
             database.log_request("[API] Grok 4.1 Reasoning", f"[Social URL] {cleaned_url[:80]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
-            analysis_result = analyze_with_grok(social_prompt, search_context=[])
+            analysis_result = analyze_with_grok(social_prompt, search_context=search_context)
             latency = int((time.time() - start_time) * 1000)
             log_id = database.log_request("/api/check-url", request.url[:100], latency, "success", cost=0.0005, case_id=case_id)
             return {
