@@ -171,16 +171,64 @@ async def check_text(request: TextCheckRequest):
             "visual_indicators": []
         }
 
+def _detect_platform(url: str) -> str:
+    """Return a human-readable platform name for a social media URL."""
+    url_lower = url.lower()
+    if "facebook.com" in url_lower or "fb.com" in url_lower or "fb.watch" in url_lower:
+        return "Facebook"
+    if "instagram.com" in url_lower:
+        return "Instagram"
+    if "twitter.com" in url_lower or "x.com" in url_lower:
+        return "X (Twitter)"
+    if "tiktok.com" in url_lower:
+        return "TikTok"
+    return "Social Media"
+
+
 @app.post("/api/check-url")
 def check_url(request: UrlCheckRequest):
     check_kill_switch()
     start_time = time.time()
     case_id = str(uuid.uuid4())
     try:
-        # Scrape the URL
+        # Scrape the URL (will return is_social_url=True for FB/IG/Twitter/TikTok)
         scraped = scrape_url(request.url)
         cleaned_url = scraped.get('cleaned_url', request.url)
-        
+        is_social = scraped.get('is_social_url', False)
+
+        # ── SOCIAL MEDIA FAST PATH ────────────────────────────────────────────
+        if is_social:
+            print(f"[check-url] Social media URL: routing directly to Grok — {cleaned_url}")
+            social_prompt = f"""The user wants to fact-check this social media post URL:
+{cleaned_url}
+
+IMPORTANT: This is a {_detect_platform(cleaned_url)} link. You MUST use your native web browsing / search capability to:
+1. Visit or search for the content of this URL directly.
+2. Identify the core claim or topic being posted.
+3. Search for credible news sources (Thai or English) that confirm or deny the claim.
+
+CRITICAL FORMATTING INSTRUCTION:
+1. CONCISENESS: Write 3-4 short bullet points max. Be direct and specific.
+2. NO URLS IN TEXT: No raw links inside `analysis`. Use only the `sources` array.
+3. Use **bold** for names, dates, keywords.
+4. If post is not accessible, explicitly say so and report what you found by searching for related claims.
+5. SOURCES: Populate `sources` array with real links. If unsure, use Google search link: https://www.google.com/search?q=...
+"""
+            database.log_request("[API] Grok 4.1 Reasoning", f"[Social URL] {cleaned_url[:80]}", 0, "info", cost=0.0005, case_id=case_id, api_name="Grok")
+            analysis_result = analyze_with_grok(social_prompt, search_context=[])
+            latency = int((time.time() - start_time) * 1000)
+            log_id = database.log_request("/api/check-url", request.url[:100], latency, "success", cost=0.0005, case_id=case_id)
+            return {
+                "log_id": log_id,
+                "score": analysis_result.get("score", 50),
+                "analysis": analysis_result.get("analysis", "ไม่สามารถดึงข้อมูลโพสต์ได้"),
+                "claims_extracted": analysis_result.get("claims_extracted", []),
+                "suspicious_words": analysis_result.get("suspicious_words", []),
+                "sources": analysis_result.get("sources", []),
+                "visual_indicators": []
+            }
+        # ── NORMAL URL PATH ──────────────────────────────────────────────────
+
         # Tier 1: Free Search + Gemini
         search_query = scraped.get('title', '') or cleaned_url
         if not search_query or search_query == 'N/A': search_query = cleaned_url
@@ -256,44 +304,7 @@ def check_url(request: UrlCheckRequest):
             "visual_indicators": []
         }
 
-@app.get("/api/admin/image/{filename}")
-async def get_admin_image(filename: str):
-    if not filename or ".." in filename or "/" in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    
-    target_url = get_image_url(filename)
-    # Ensure protocol is present
-    if not target_url.startswith("http"):
-        target_url = f"https://{target_url}"
-        
-    print(f"[AdminImage] Proxying {filename} from {target_url}")
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(target_url, timeout=10) as resp:
-                if resp.status != 200:
-                    print(f"[AdminImage] Error: R2 returned status {resp.status} for {filename}")
-                    # If it's a 404/403, don't bother redirecting, it will fail there too
-                    if resp.status in [403, 404]:
-                        raise HTTPException(status_code=resp.status, detail=f"Image {resp.status}")
-                    raise Exception(f"R2 status {resp.status}")
-                
-                content = await resp.read()
-                content_type = resp.headers.get("Content-Type", "image/jpeg")
-                return Response(
-                    content=content, 
-                    media_type=content_type,
-                    headers={
-                        "Cache-Control": "public, max-age=86400",
-                        "Access-Control-Allow-Origin": "*"
-                    }
-                )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"[AdminImage] Proxy failure for {filename}: {str(e)}")
-        # Fallback to redirect only for non-404 errors (like timeouts or connection issues)
-        return RedirectResponse(url=target_url)
+
 
 @app.post("/api/check-image")
 async def check_image(files: List[UploadFile] = File(...)):
@@ -652,23 +663,41 @@ async def toggle_killswitch(req: ToggleKillSwitchRequest):
 @app.get("/api/admin/image/{filename}")
 async def serve_admin_image(filename: str):
     """Proxy image from R2/S3 to avoid CORS/access issues in admin dashboard."""
-    # Use fallback if env var is missing
-    public_url = os.getenv("R2_PUBLIC_URL") or "https://pub-288db4e945a94cb78539b5d398c81430.r2.dev"
+    if not filename or ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
     
-    url = f"{public_url.rstrip('/')}/{filename}"
+    # Use service to get URL
+    target_url = get_image_url(filename)
+    
+    # Ensure protocol is present
+    if not target_url.startswith("http"):
+        target_url = f"https://{target_url}"
+        
+    print(f"[AdminImage] Proxying {filename} from {target_url}")
+    
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
+            async with session.get(target_url, timeout=10) as resp:
                 if resp.status != 200:
+                    print(f"[AdminImage] Error: R2 returned status {resp.status} for {filename}")
+                    if resp.status in [403, 404]:
+                        raise HTTPException(status_code=resp.status, detail=f"Image {resp.status}")
                     return Response(status_code=resp.status, content=f"Image fetch failed: {resp.status}")
                 
                 content = await resp.read()
+                content_type = resp.headers.get("Content-Type", "image/jpeg")
                 return Response(
                     content=content,
-                    media_type=resp.headers.get("Content-Type", "image/jpeg"),
-                    headers={"Cache-Control": "public, max-age=3600"}
+                    media_type=content_type,
+                    headers={
+                        "Cache-Control": "public, max-age=86400",
+                        "Access-Control-Allow-Origin": "*"
+                    }
                 )
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"[AdminImage] Proxy error for {filename}: {str(e)}")
         return Response(status_code=502, content=f"Proxy error: {str(e)}")
 
 @app.post("/api/admin/chat")

@@ -285,29 +285,54 @@ def search_web(query: str) -> list:
 
 
 
+
+SOCIAL_MEDIA_DOMAINS = {
+    "facebook.com", "fb.com", "fb.watch",
+    "instagram.com", "twitter.com", "x.com",
+    "tiktok.com",
+}
+
+def _is_social_url(url: str) -> bool:
+    """Check if URL is from a social media platform that blocks scraping."""
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).netloc.lower().lstrip("www.")
+        return any(host == d or host.endswith("." + d) for d in SOCIAL_MEDIA_DOMAINS)
+    except Exception:
+        return False
+
+
 def scrape_url(url: str) -> dict:
     """Scrape basic text content from a URL.
     
-    Improvements:
-    - Strips Facebook/tracking params (fbclid, aem_*, utm_*) before fetching
-      so JS-rendered pages like UNILAD resolve cleanly.
-    - Falls back to og:description meta tag when <p> body is empty
-      (common for JS-heavy sites like UNILAD, Reddit, etc.).
+    - Strips tracking params (fbclid, aem_*, utm_*) before fetching.
+    - Falls back to og:description meta tag when <p> body is empty.
+    - For social media URLs (Facebook, Instagram, Twitter, TikTok) that
+      require login/JS, returns is_social_url=True so the caller can use
+      Grok's native web browsing instead of direct scraping.
     """
     from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 
-    # --- Strip known tracking/redirect params ---
     TRACKING_PARAMS = {"fbclid", "utm_source", "utm_medium", "utm_campaign",
                        "utm_term", "utm_content", "ref", "_fb_noscript"}
     try:
         parsed = urlparse(url)
         qs = parse_qs(parsed.query, keep_blank_values=True)
-        # Remove any param whose key starts with a tracking prefix OR is in the exact set
         cleaned_qs = {k: v for k, v in qs.items()
                       if k not in TRACKING_PARAMS and not k.startswith("aem_")}
         cleaned_url = urlunparse(parsed._replace(query=urlencode(cleaned_qs, doseq=True)))
     except Exception:
-        cleaned_url = url  # If parsing fails, use original
+        cleaned_url = url
+
+    # Social media: skip scraping entirely, caller will use Grok
+    if _is_social_url(cleaned_url):
+        print(f"[scrape_url] Social media URL detected, skipping direct scrape: {cleaned_url}")
+        return {
+            "title": "Social Media Post",
+            "text": "",
+            "cleaned_url": cleaned_url,
+            "is_social_url": True,
+        }
 
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -315,14 +340,10 @@ def scrape_url(url: str) -> dict:
         res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
 
-        # Primary title: <title> tag
         title = soup.title.string.strip() if soup.title else ""
-
-        # Primary body: <p> tags
         paragraphs = soup.find_all('p')
         text = " ".join([p.get_text() for p in paragraphs]).strip()
 
-        # Fallback for JS-rendered sites: use OG meta tags
         if len(text) < 100:
             og_title = soup.find("meta", property="og:title")
             og_desc = soup.find("meta", property="og:description")
@@ -331,8 +352,9 @@ def scrape_url(url: str) -> dict:
             if og_desc:
                 og_text = og_desc.get("content", "").strip()
                 if og_text:
-                    text = og_text  # At minimum we have a summary for Grok to work with
+                    text = og_text
 
-        return {"title": title, "text": text[:5000], "cleaned_url": cleaned_url}
+        return {"title": title, "text": text[:5000], "cleaned_url": cleaned_url, "is_social_url": False}
     except Exception as e:
-        return {"error": str(e), "text": "", "title": "", "cleaned_url": cleaned_url}
+        return {"error": str(e), "text": "", "title": "", "cleaned_url": cleaned_url, "is_social_url": False}
+
