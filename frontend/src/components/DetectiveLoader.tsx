@@ -62,13 +62,20 @@ export default function DetectiveLoader({ visible }: { visible: boolean }) {
       setProgress(0);
       return;
     }
-    // Cycle through steps
+    // Cycle through steps - slow down slightly to match real processing time
     const stepInterval = setInterval(() => {
       setStep((prev) => (prev < STEPS.length - 1 ? prev + 1 : prev));
-    }, 2800);
-    // Smooth progress bar
+    }, 4500); 
+
+    // Non-linear progress bar: fast at start, extremely slow after 90%
     const progressInterval = setInterval(() => {
-      setProgress((prev) => Math.min(prev + 0.4, 95));
+      setProgress((prev) => {
+        if (prev < 60) return prev + 0.8;      // 0-60%: Fast (takes ~8s)
+        if (prev < 85) return prev + 0.2;      // 60-85%: Slower (takes ~13s)
+        if (prev < 95) return prev + 0.05;     // 85-95%: Very slow (takes ~22s)
+        if (prev < 99) return prev + 0.01;     // 95-99%: Glacial crawl (never stops)
+        return prev;
+      });
     }, 110);
     // Dot animation
     const dotInterval = setInterval(() => {

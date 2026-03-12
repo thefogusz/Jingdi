@@ -28,6 +28,55 @@ def _execute(cur, query: str, args=None):
         cur.execute(query)
 
 
+def _ensure_columns():
+    """Ensure essential columns exist for logging and dashboard branding."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    # case_id for per-request tracking
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN case_id TEXT")
+        else:
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS case_id TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
+
+    # api_name for branding/pricing breakdown
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN api_name TEXT")
+        else:
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS api_name TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
+    # ai_lesson_learned for self-learning loop in user_feedback
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE user_feedback ADD COLUMN ai_lesson_learned TEXT")
+        else:
+             cur.execute("ALTER TABLE user_feedback ADD COLUMN IF NOT EXISTS ai_lesson_learned TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
+        
+    # ip_address and user_agent for visitor analytics
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN ip_address TEXT")
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN user_agent TEXT")
+        else:
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS ip_address TEXT")
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS user_agent TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
+        
+    cur.close()
+    conn.close()
+
+
 def init_db():
     conn = _get_conn()
     cur = conn.cursor()
@@ -65,11 +114,15 @@ def init_db():
     conn.commit()
     cur.close()
     conn.close()
+    
+    # Run migrations to ensure columns exist on older DB instances
+    _ensure_columns()
 
 
 def log_request(endpoint: str, query: str, latency_ms: int, status: str,
                 error_message: str = "", cost: float = 0.0,
-                case_id: str = None, api_name: str = None) -> int:
+                case_id: str = None, api_name: str = None,
+                ip_address: str = None, user_agent: str = None) -> int:
     try:
         conn = _get_conn()
         cur = conn.cursor()
@@ -78,11 +131,11 @@ def log_request(endpoint: str, query: str, latency_ms: int, status: str,
         query_str = '''
             INSERT INTO api_logs
                 (timestamp, endpoint, query, latency_ms, status, error_message,
-                 estimated_cost_usd, case_id, api_name)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 estimated_cost_usd, case_id, api_name, ip_address, user_agent)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         '''
         
-        args = (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name)
+        args = (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name, ip_address, user_agent)
 
         if _is_sqlite():
             _execute(cur, query_str, args)
@@ -114,6 +167,50 @@ def save_feedback(log_id: int, is_helpful: bool, reason: str = "", details: str 
     except Exception as e:
         print(f"Feedback logging error: {e}")
 
+def update_feedback_lesson(log_id: int, lesson: str):
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        _execute(cur, '''
+            UPDATE user_feedback 
+            SET ai_lesson_learned = %s 
+            WHERE log_id = %s
+        ''', (lesson, log_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error updating feedback lesson: {e}")
+
+def get_active_lessons(limit: int = 3):
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        _execute(cur, '''
+            SELECT ai_lesson_learned
+            FROM user_feedback
+            WHERE ai_lesson_learned IS NOT NULL AND ai_lesson_learned != ''
+            ORDER BY id DESC LIMIT %s
+        ''', (limit,))
+        lessons = [r[0] for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return lessons
+    except Exception as e:
+        print(f"Error fetching active lessons: {e}")
+        return []
+
+def get_log_query(log_id: int):
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        _execute(cur, 'SELECT query FROM api_logs WHERE id = %s', (log_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row[0] if row else ""
+    except Exception:
+        return ""
 
 def get_dashboard_stats():
     try:
