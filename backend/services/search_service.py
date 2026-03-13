@@ -34,13 +34,14 @@ def search_tavily(query: str, max_results: int = 10) -> list:
             results.append({
                 "title": item.get("title", ""),
                 "link": item.get("url", ""),
-                "snippet": item.get("content", "")[:300],
+                "snippet": str(item.get("content", ""))[:300],
                 "pub_date": pub_date
             })
         print(f"[Tavily] Found {len(results)} results for: {query[:60]}")
         return results
     except Exception as e:
         print(f"[Tavily] Exception: {e}")
+        return []
 def _optimize_social_url(url: str) -> str:
     """Redirect social URLs to mobile or alternative frontends for better scraping."""
     try:
@@ -187,10 +188,10 @@ def _scrape_with_cloudflare(url: str) -> str:
 def _run_gemini(client, prompt: str) -> str:
     """Run gemini with automatic flash-lite fallback on rate limit."""
     try:
-        res = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
+        res = client.models.generate_content(model='gemini-3-flash-preview', contents=prompt)
     except Exception as e:
         if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            res = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
+            res = client.models.generate_content(model='gemini-3.1-flash-lite-preview', contents=prompt)
         else:
             raise e
     return res.text.strip().replace('"', '')
@@ -384,8 +385,8 @@ def search_web(query: str, case_id: str = None) -> list:
                 except Exception:
                     pass
 
-        import database
-        database.log_request("[API] Hybrid Search", query[:100], 0, "info", cost=0.003, case_id=case_id, api_name="Search_Service")
+        if database:
+            database.log_request("[API] Hybrid Search", query[:100], 0, "info", cost=0.003, case_id=case_id, api_name="Search_Service")
         
         return sources[:15]
     except Exception as e:

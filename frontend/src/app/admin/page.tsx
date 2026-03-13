@@ -115,23 +115,20 @@ function BrandBadge({ name }: { name: string }) {
 
 function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size?: "sm" | "md" | "lg", r2BaseUrl?: string }) {
   // Enhanced regex to catch various formats including the new [Image Upload] format
-  const m = query.match(/\[Image Upload\]\s*([a-zA-Z0-9._-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
-            query.match(/image:\s*([a-zA-Z0-9._-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
-            query.match(/\(([a-zA-Z0-9._-]+\.(?:jpg|jpeg|png|webp|gif))\)/i) ||
-            query.match(/\b([a-zA-Z0-9]{8,}\.(?:jpg|jpeg|png|webp|gif))\b/i);
+  const m = query.match(/[\[(]?Image Upload[\])]?\s*([a-zA-Z0-9._-]+\.[a-zA-Z0-9]+)/i) ||
+            query.match(/image:\s*([a-zA-Z0-9._-]+\.[a-zA-Z0-9]+)/i) ||
+            query.match(/([a-zA-Z0-9]{8,}\.(?:jpg|jpeg|png|webp|gif))/i);
             
   if (!m) return <span className="truncate flex-1">{query}</span>;
 
   const filename = m[1];
-  const imgUrl = `/api/admin/image/${filename}`;
+  // Prioritize direct R2 URL if available, fallback to proxy
+  const imgUrl = r2BaseUrl ? `${r2BaseUrl.replace(/\/$/, '')}/${filename}` : `/api/admin/image/${filename}`;
+  
   const cleanText = query
     .replace(m[0], '')
     .replace('Headline/Text extracted from image:', '')
     .replace('Image processing', '')
-    .replace('()', '')
-    .replace('[]', '')
-    .replace(/\[\s*\]/, '')
-    .replace(/:$/, '')
     .trim();
 
   const imgClasses = {
@@ -148,15 +145,23 @@ function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
-      <span className="truncate text-neutral-400 text-[10px] bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+      <span className="truncate text-neutral-400 text-[10px] bg-white/5 px-1.5 py-0.5 rounded border border-white/5" title={query}>
         {cleanText || 'Image'}
       </span>
       <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 group/img relative" title={`View original: ${filename}`}>
         <img 
           src={imgUrl} 
-          className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative`} 
+          className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative bg-neutral-800`} 
           alt={`Image: ${filename}`} 
-          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          onError={(e) => { 
+            // If direct URL fails, try proxy as fallback once
+            if (r2BaseUrl && e.currentTarget.src.includes(r2BaseUrl)) {
+              e.currentTarget.src = `/api/admin/image/${filename}`;
+            } else {
+              // Final failure: show border but mark as broken
+              e.currentTarget.style.opacity = '0.3';
+            }
+          }}
         />
       </a>
     </div>
@@ -408,7 +413,7 @@ export default function AdminDashboard() {
               </p>
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
                 {stats?.api_brand_totals && stats.api_brand_totals.length > 0 ? (
-                  stats.api_brand_totals.map((item, idx) => {
+                  stats.api_brand_totals.map((item: BrandTotal, idx: number) => {
                     const c = BRAND_COLORS[item.brand] ?? BRAND_COLORS['Gemini'];
                     return (
                       <div key={idx} className="flex justify-between items-center p-2 rounded-xl border border-white/5"
@@ -477,7 +482,7 @@ export default function AdminDashboard() {
                 Latest User Feedback
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {stats?.recent_feedback?.slice(0, 4).map((fb: any, idx: number) => (
+                {stats?.recent_feedback?.slice(0, 4).map((fb: FeedbackRecord, idx: number) => (
                   <div key={idx} className="bg-black/30 border border-white/5 rounded-2xl p-5 transition-all hover:border-purple-500/30 hover:bg-black/50 group">
                     <div className="flex items-center justify-between mb-3">
                       <span className={`px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide flex items-center ${
@@ -533,7 +538,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {stats?.recent_traffic?.map((request, idx) => (
+                    {stats?.recent_traffic?.map((request: TrafficRecord, idx: number) => (
                       <tr key={idx} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-5 py-4 whitespace-nowrap text-neutral-400 text-xs font-medium">
                           {new Date(request.time).toLocaleTimeString('th-TH')}
@@ -589,7 +594,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {stats?.cases?.map((c, idx) => (
+                    {stats?.cases?.map((c: CaseRecord, idx: number) => (
                       <tr key={idx} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-4 py-3 whitespace-nowrap text-neutral-400 text-[11px]">
                           {new Date(c.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -640,7 +645,7 @@ export default function AdminDashboard() {
                   Recent System Errors
                 </h3>
                 <div className="space-y-4">
-                  {stats.recent_errors.map((err, idx) => (
+                  {stats.recent_errors.map((err: RecentError, idx: number) => (
                     <div key={idx} className="bg-black/40 rounded-2xl p-4 text-sm font-mono text-red-300 border border-white/5 relative overflow-hidden group">
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-500 to-orange-500 opacity-80" />
                       <div className="flex justify-between items-center text-xs text-neutral-500 mb-3 pl-2">
@@ -681,7 +686,7 @@ export default function AdminDashboard() {
                   </div>
                 )}
                 
-                {chatMessages.map((msg, idx) => (
+                {chatMessages.map((msg: {role: 'user' | 'assistant', content: string}, idx: number) => (
                   <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                     {msg.role === 'assistant' && (
                       <div className="flex items-center gap-1.5 mb-1 ml-1">
@@ -718,7 +723,7 @@ export default function AdminDashboard() {
                   <input
                     type="text"
                     value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setChatInput(e.target.value)}
                     placeholder="ถามสถิติระบบ, API usage..."
                     className="flex-1 bg-neutral-950 border border-neutral-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
                   />

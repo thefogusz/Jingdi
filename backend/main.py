@@ -132,7 +132,7 @@ async def check_text(payload: TextCheckRequest, request: Request):
         latency = int((time.time() - start_time) * 1000)
         ip_addr = request.client.host if request.client else "unknown"
         ua = request.headers.get("user-agent", "unknown")
-        log_id = database.log_request("/api/check-text", text[:100], latency, "success", cost=0.0001, case_id=case_id, ip_address=ip_addr, user_agent=ua)
+        log_id = database.log_request("/api/check-text", str(text)[:100], latency, "success", cost=0.0001, case_id=case_id, ip_address=ip_addr, user_agent=ua)
         
         return {
             "log_id": log_id,
@@ -217,7 +217,7 @@ INSTRUCTION:
             analysis_result = analyze_with_grok(social_prompt, search_context=str(search_context))
             
             latency = int((time.time() - start_time) * 1000)
-            log_id = database.log_request("/api/check-url", payload.url[:100], latency, "success", cost=0.0005, case_id=case_id)
+            log_id = database.log_request("/api/check-url", str(payload.url)[:100], latency, "success", cost=0.0005, case_id=case_id)
             return {
                 "log_id": log_id,
                 "score": analysis_result.get("score", 50),
@@ -262,23 +262,37 @@ async def check_image(request: Request, files: List[UploadFile] = File(...)):
         vision_result = analyze_images_with_vision(contents, is_screenshot=False)
         extracted_text = vision_result.get("extracted_text", "")
         visual_indicators = vision_result.get("visual_indicators", [])
+        ai_signals = vision_result.get("ai_generated_signals", [])
+        vision_analysis = vision_result.get("analysis", "")
         
         rev_search = reverse_image_search(public_img_url) if public_img_url else {}
-        search_context = search_web(extracted_text, case_id) if extracted_text else []
+        rev_summary = rev_search.get("summary", "")
         
-        analysis_result = analyze_text_claim(f"Verify image claim: {extracted_text}", str(search_context))
-        if (40 < analysis_result.get("score", 50) < 60) or not analysis_result.get("sources"):
-            analysis_result = analyze_with_grok(f"Verify image: {extracted_text}", str(search_context))
+        # Merge vision/reverse search into search context for text analyzer
+        combined_context = f"[VISION ANALYSIS]: {vision_analysis}\n[VISUAL INDICATORS]: {', '.join(visual_indicators)}\n[AI SIGNALS]: {', '.join(ai_signals)}\n\n{rev_summary}"
+        
+        if extracted_text:
+            search_context = search_web(extracted_text, case_id)
+            full_context = f"{combined_context}\n\n[WEB SEARCH RESULTS]:\n{str(search_context)}"
+            analysis_result = analyze_text_claim(f"Verify image claim: {extracted_text}", full_context)
+            if (40 < analysis_result.get("score", 50) < 60) or not analysis_result.get("sources"):
+                analysis_result = analyze_with_grok(f"Verify image: {extracted_text}", full_context)
+        else:
+            # No text in image - use high-reasoning model (Gemini 3/Grok) to analyze visual/reverse search results
+            analysis_result = analyze_with_grok("วิเคราะห์ภาพจากสิ่งที่เห็นและประวัติภาพจาก Google", combined_context)
             
         latency = int((time.time() - start_time) * 1000)
         log_id = database.log_request("/api/check-image", f"[Image Upload] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
+        
+        # Merge results for final output
         return {
             "log_id": log_id,
             "score": analysis_result.get("score", 50),
             "analysis": analysis_result.get("analysis", ""),
             "sources": analysis_result.get("sources", []),
             "extracted_text": extracted_text,
-            "visual_indicators": visual_indicators
+            "visual_indicators": visual_indicators,
+            "ai_signals": ai_signals
         }
     except Exception as e:
         return {"log_id": -1, "score": 50, "analysis": f"เกิดข้อผิดพลาด: {str(e)}", "sources": []}
@@ -290,25 +304,40 @@ async def check_screenshot(request: Request, files: List[UploadFile] = File(...)
     start_time = time.time()
     try:
         contents = [await file.read() for file in files]
-        img_filename = f"{uuid.uuid4().hex[:12]}.jpg"
+        img_filename = f"screenshot_{uuid.uuid4().hex[:12]}.jpg"
         public_img_url = upload_image(img_filename, contents[0])
         
         vision_result = analyze_images_with_vision(contents, is_screenshot=True)
-        text = vision_result.get("extracted_text", "")
-        
+        extracted_text = vision_result.get("extracted_text", "")
+        visual_indicators = vision_result.get("visual_indicators", [])
+        ai_signals = vision_result.get("ai_generated_signals", [])
+        vision_analysis = vision_result.get("analysis", "")
+
         rev_search = reverse_image_search(public_img_url) if public_img_url else {}
-        search_context = search_web(text, case_id) if text else []
-        analysis_result = analyze_text_claim(text, search_context=search_context)
-        
-        if (40 < analysis_result.get("score", 50) < 60) or not analysis_result.get("sources"):
-            analysis_result = analyze_with_grok(f"Verify screenshot: {text}", search_context=search_context)
-            
+        rev_summary = rev_search.get("summary", "")
+
+        combined_context = f"[VISION ANALYSIS]: {vision_analysis}\n[VISUAL INDICATORS]: {', '.join(visual_indicators)}\n[AI SIGNALS]: {', '.join(ai_signals)}\n\n{rev_summary}"
+
+        if extracted_text:
+            search_context = search_web(extracted_text, case_id)
+            full_context = f"{combined_context}\n\n[WEB SEARCH RESULTS]:\n{str(search_context)}"
+            analysis_result = analyze_text_claim(f"Verify screenshot claim: {extracted_text}", full_context)
+            if (40 < analysis_result.get("score", 50) < 60) or not analysis_result.get("sources"):
+                analysis_result = analyze_with_grok(f"Verify screenshot: {extracted_text}", full_context)
+        else:
+            analysis_result = analyze_with_grok("วิเคราะห์ภาพจากสิ่งที่เห็นและประวัติภาพจาก Google", combined_context)
+
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-screenshot", f"[Image Upload] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
+        log_id = database.log_request("/api/check-screenshot", f"[Screenshot] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
+        
         return {
-            "log_id": log_id, "score": analysis_result.get("score", 50),
-            "analysis": analysis_result.get("analysis", ""), "sources": analysis_result.get("sources", []),
-            "extracted_text": text, "visual_indicators": vision_result.get("visual_indicators", [])
+            "log_id": log_id,
+            "score": analysis_result.get("score", 50),
+            "analysis": analysis_result.get("analysis", ""),
+            "sources": analysis_result.get("sources", []),
+            "extracted_text": extracted_text,
+            "visual_indicators": visual_indicators,
+            "ai_signals": ai_signals
         }
     except Exception as e:
         return {"log_id": -1, "score": 50, "analysis": f"Error: {str(e)}", "sources": []}

@@ -85,7 +85,7 @@ def analyze_root_cause(claim: str, original_response: str, user_reason: str) -> 
     
     try:
         response = gemini_client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3-flash-preview",
             contents=reflection_prompt,
             config=types.GenerateContentConfig(
                 temperature=0.0
@@ -144,7 +144,7 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
         try:
             try:
                 response = gemini_client.models.generate_content(
-                    model='gemini-2.0-flash',
+                    model='gemini-3-flash-preview',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
@@ -155,7 +155,7 @@ def analyze_text_claim(text: str, search_context: str = "") -> dict:
             except Exception as inner_e:
                 if "429" in str(inner_e) or "RESOURCE_EXHAUSTED" in str(inner_e):
                     response = gemini_client.models.generate_content(
-                        model='gemini-1.5-flash',
+                        model='gemini-3.1-flash-lite-preview',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
@@ -207,15 +207,22 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     {search_context if search_context else "No search context provided."}
     ---
     
-    ROLE: Digital Forensic Investigator. Goal: FACTUAL TRUTH. Origin identification.
-    ANALYZE: Verify event, identify first source (provenance), check for AI-generation signals (AIGC), evaluate social consensus.
+    ROLE: Professional X (Twitter) & Digital Forensic Investigator.
+    STRENGTH: You have unique access to real-time data on X (Twitter) that other models might lack.
+    MISSION: Final fallback analysis. Your goal is to find the "hidden truth" often found in social discussions or X links when standard web search fails.
+    
+    ANALYZE: 
+    1. Investigate X (Twitter) links/discussions specifically.
+    2. Identify the first person/account to post the claim (Provenance).
+    3. Check for "social consensus" or "community notes" on X.
+    4. Detect AI-generation signals (AIGC).
     
     INSTRUCTIONS:
-    - STRICT ANCHORING: If context is irrelevant, discard it.
-    - NO HALLUCINATION.
-    - TONE: Professional but simple Thai. Focus on "**ต้นตอ**" (Origin).
-    - CONCISENESS: Max 3-4 bullet points. No URLs in text. **Bold** key names.
-    - SOURCES: Populate with real, working links. Use Google search link if exact URL unknown.
+    - If others failed to find evidence, dig deep into X/Social data.
+    - STRICT ANCHORING: Discard irrelevant context.
+    - TONE: Professional but investigative Thai. Focus on "**เจาะลึกที่มาบน X**".
+    - CONCISENESS: Max 3-4 bullet points. No URLs in main text.
+    - SOURCES: Include real links to X posts or relevant sources.
     
     Respond in JSON: {{ "score": 0, "analysis": "...", "claims_extracted": [], "suspicious_words": [], "sources": [] }}
     """

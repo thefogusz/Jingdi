@@ -126,7 +126,7 @@ def analyze_images_with_vision(image_buffers: list, is_screenshot: bool = False)
         try:
             try:
                 response = client.models.generate_content(
-                    model='gemini-2.0-flash',
+                    model='gemini-3-flash-preview',
                     contents=[prompt, *images],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
@@ -136,7 +136,7 @@ def analyze_images_with_vision(image_buffers: list, is_screenshot: bool = False)
             except Exception as inner_e:
                 if "429" in str(inner_e) or "RESOURCE_EXHAUSTED" in str(inner_e):
                     response = client.models.generate_content(
-                        model='gemini-1.5-flash',
+                        model='gemini-3.1-flash-lite-preview',
                         contents=[prompt, *images],
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
