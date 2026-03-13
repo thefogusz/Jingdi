@@ -7,6 +7,7 @@ import concurrent.futures
 from services.gemini_pool import get_next_client
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 import re
+import database
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
@@ -163,7 +164,7 @@ def _scrape_with_cloudflare(url: str) -> str:
                 job_json = poll_res.json()
                 results = job_json.get("result")
                 
-                # result can be a dict or a string depending on status
+                # result can be a dict, a list, or a string depending on status
                 if isinstance(results, dict):
                     status = results.get("status")
                     if status == "completed":
@@ -172,11 +173,16 @@ def _scrape_with_cloudflare(url: str) -> str:
                             content = pages[0].get("content", "")
                             metadata = pages[0].get("metadata", {})
                             title = metadata.get("title", "")
+                            print(f"[Cloudflare Crawl] Success! Extracted {len(content)} chars.")
                             return f"Title: {title}\n\n{content}"
                         break
                     elif status in ["error", "failed"]:
                         print(f"[Cloudflare Crawl] Job failed: {results.get('error')}")
                         return ""
+                elif isinstance(results, list) and len(results) > 0:
+                    # Some versions return list of pages directly if completed
+                    print(f"[Cloudflare Crawl] Success (list mode)! Extracted content.")
+                    return results[0].get("content", "")
                 elif isinstance(results, str) and results in ["error", "failed"]:
                     return ""
         
@@ -212,7 +218,7 @@ def extract_keywords(query: str) -> str:
         Return ONLY the keywords separated by spaces."""
         return _run_gemini(client, prompt)
     except Exception:
-        return query[:50]
+        return str(query)[:50]
 
 def extract_english_keywords(query: str) -> str:
     """Extract English-language search keywords for international coverage."""
@@ -226,7 +232,7 @@ def extract_english_keywords(query: str) -> str:
     try:
         client = get_next_client()
         if not client:
-            return regex_keywords or query[:50]
+            return str(regex_keywords) or str(query)[:50]
         prompt = f"""Translate and extract 4-6 concise English search keywords from this text.
         - Always output in English only.
         - Extract proper nouns, company names, technical terms, and key concepts.
@@ -386,9 +392,10 @@ def search_web(query: str, case_id: str = None) -> list:
                     pass
 
         if database:
-            database.log_request("[API] Hybrid Search", query[:100], 0, "info", cost=0.003, case_id=case_id, api_name="Search_Service")
+            # Cast to str to satisfy linter
+            database.log_request("[API] Hybrid Search", str(query)[:100], 0, "info", cost=0.003, case_id=case_id, api_name="Search_Service")
         
-        return sources[:15]
+        return list(sources)[:15]
     except Exception as e:
         print(f"Search API Error: {e}")
         return []
