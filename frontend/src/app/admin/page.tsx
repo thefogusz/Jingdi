@@ -114,10 +114,10 @@ function BrandBadge({ name }: { name: string }) {
 }
 
 function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size?: "sm" | "md" | "lg", r2BaseUrl?: string }) {
-  // Enhanced regex to catch various formats including the new [Image Upload] format
-  const m = query.match(/[\[(]?Image Upload[\])]?\s*([a-zA-Z0-9._-]+\.[a-zA-Z0-9]+)/i) ||
-            query.match(/image:\s*([a-zA-Z0-9._-]+\.[a-zA-Z0-9]+)/i) ||
-            query.match(/([a-zA-Z0-9]{8,}\.(?:jpg|jpeg|png|webp|gif))/i);
+  // Regex to catch [Image Upload], [Screenshot], image: prefix, or bare image filenames (supports underscores)
+  const m = query.match(/\[(?:Image Upload|Screenshot)\]\s*([\w.-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
+            query.match(/image:\s*([\w.-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
+            query.match(/([\w-]{8,}\.(?:jpg|jpeg|png|webp|gif))/i);
             
   if (!m) return <span className="truncate flex-1">{query}</span>;
 
