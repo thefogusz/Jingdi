@@ -8,6 +8,7 @@ from google import genai
 from google.genai import types
 
 from .gemini_pool import get_next_client
+from .llm_service import VISION_GROK_MODELS, _grok_chat_completion
 
 VISION_PROMPT_TEMPLATE = (
     "Current Date: {current_date} (พ.ศ. {current_year_th})\n\n"
@@ -52,8 +53,7 @@ def _grok_vision_fallback(image_buffers: list, prompt: str) -> dict:
                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
             })
         
-        response = grok_client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning",
+        response = _grok_chat_completion(
             messages=[
                 {
                     "role": "system",
@@ -73,6 +73,7 @@ def _grok_vision_fallback(image_buffers: list, prompt: str) -> dict:
                 },
                 {"role": "user", "content": content}
             ],
+            preferred_models=VISION_GROK_MODELS,
             temperature=0.1,
             response_format={"type": "json_object"},
             max_tokens=1500

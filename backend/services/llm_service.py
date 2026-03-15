@@ -51,6 +51,48 @@ grok_client = OpenAI(
     base_url="https://api.x.ai/v1",
 ) if xai_api_key else None
 
+def _unique_models(*models: str) -> list[str]:
+    seen = set()
+    ordered = []
+    for model in models:
+        if model and model not in seen:
+            seen.add(model)
+            ordered.append(model)
+    return ordered
+
+TEXT_GROK_MODELS = _unique_models(
+    os.getenv("XAI_TEXT_MODEL"),
+    "grok-4-1-fast-reasoning",
+    "grok-4-1-fast",
+    "grok-4-1-fast-non-reasoning",
+)
+
+VISION_GROK_MODELS = _unique_models(
+    os.getenv("XAI_VISION_MODEL"),
+    "grok-4-1-fast",
+    "grok-4-1-fast-reasoning",
+    "grok-4-1-fast-non-reasoning",
+)
+
+def _grok_chat_completion(messages: list, preferred_models: list[str], **kwargs):
+    last_error = None
+    for model in preferred_models:
+        try:
+            return grok_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                **kwargs,
+            )
+        except Exception as e:
+            last_error = e
+            error_text = str(e)
+            if "Model not found" in error_text:
+                continue
+            raise
+    if last_error:
+        raise last_error
+    raise RuntimeError("No Grok model configured.")
+
 def _inject_lessons(system_prompt: str) -> str:
     """Inject lessons learned from past feedback into the system prompt."""
     try:
@@ -229,12 +271,12 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     try:
         system_msg = "You are a highly accurate fact-checker AI with live web search. Respond with valid JSON only."
         system_msg = _inject_lessons(system_msg)
-        response = grok_client.chat.completions.create(
-            model="grok-4-1-fast-reasoning",
+        response = _grok_chat_completion(
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt}
             ],
+            preferred_models=TEXT_GROK_MODELS,
             temperature=0.1,
             response_format={"type": "json_object"}
         )
@@ -279,13 +321,14 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "", log
     )
     content.append({"type": "text", "text": prompt_text})
     try:
-        response = grok_client.chat.completions.create(
-            model="grok-vision-beta",
+        response = _grok_chat_completion(
             messages=[
                 {"role": "system", "content": _inject_lessons("Accurate fact-checker with vision. Focal point is the HEADLINE text.")},
                 {"role": "user", "content": content}
             ],
+            preferred_models=VISION_GROK_MODELS,
             temperature=0.1,
+            response_format={"type": "json_object"},
             max_tokens=2000
         )
         response_text = response.choices[0].message.content.strip()
