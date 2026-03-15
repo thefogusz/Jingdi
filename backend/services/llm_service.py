@@ -1,6 +1,7 @@
 import os
 import json
 from datetime import datetime
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,40 +10,36 @@ from google.genai import types
 from openai import OpenAI
 
 from .gemini_pool import get_next_client
+from .cache_service import get_cache, make_cache_key, set_cache
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def verify_url(url: str) -> bool:
-    """Check if a URL is alive, being lenient to anti-bot protections."""
+    """Quickly validate source URLs without extra network calls on the hot path."""
     if not url or not url.startswith("http"):
         return False
-        
+
+    cache_key = make_cache_key("verify_url", url)
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     lower_url = url.lower()
-    # Explicitly block x.com / twitter.com since they don't resolve properly without auth
     if "x.com/" in lower_url or "twitter.com/" in lower_url:
-        return False
-        
-    # Block explicitly hallucinated placeholder domains
+        return set_cache(cache_key, False, 3600)
     if "example.com" in lower_url or "your-search-keywords" in lower_url:
-        return False
-        
-    # Be more lenient with social media/sharing links as they often fail HEAD requests but are valid
+        return set_cache(cache_key, False, 3600)
     if any(dm in lower_url for dm in ["facebook.com", "fb.watch", "instagram.com", "t.co", "bit.ly"]):
-        return True
-        
+        return set_cache(cache_key, True, 3600)
+
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        res = requests.get(url, headers=headers, timeout=6.0, verify=False, allow_redirects=True, stream=True)
-        res.close()
-        if res.status_code in [400, 404, 410] or res.status_code >= 500:
-            return False
-        return True
+        parsed = urlparse(url)
+        is_valid = parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+        return set_cache(cache_key, is_valid, 3600)
     except Exception:
-        return False
+        return set_cache(cache_key, False, 600)
 
 # Initialize Grok
 xai_api_key = os.getenv("XAI_API_KEY")

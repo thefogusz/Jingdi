@@ -5,11 +5,42 @@ import os
 import json
 import concurrent.futures
 from services.gemini_pool import get_next_client
+from services.cache_service import get_cache, make_cache_key, set_cache
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 import re
 import database
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+CRAWL_POLL_RETRIES = int(os.getenv("CRAWL_POLL_RETRIES", "4"))
+CRAWL_POLL_INTERVAL_SECONDS = float(os.getenv("CRAWL_POLL_INTERVAL_SECONDS", "1.5"))
+
+
+def _normalize_query_text(query: str) -> str:
+    return re.sub(r"\s+", " ", (query or "").strip())
+
+
+def _cheap_keywords(query: str) -> str:
+    normalized = _normalize_query_text(query)
+    if not normalized:
+        return ""
+
+    thai_tokens = re.findall(r"[\u0E00-\u0E7F]{2,}", normalized)
+    english_tokens = re.findall(r"[A-Za-z][A-Za-z0-9'-]{1,}", normalized)
+    number_tokens = re.findall(r"\d[\d,./-]*", normalized)
+
+    selected = []
+    seen = set()
+    for token in thai_tokens + english_tokens + number_tokens:
+        cleaned = token.strip()
+        lower_cleaned = cleaned.lower()
+        if len(cleaned) < 2 or lower_cleaned in seen:
+            continue
+        seen.add(lower_cleaned)
+        selected.append(cleaned)
+        if len(selected) >= 6:
+            break
+
+    return " ".join(selected) or normalized[:80]
 
 def search_tavily(query: str, max_results: int = 10) -> list:
     """Search using Tavily AI Search API."""
@@ -60,6 +91,11 @@ def _optimize_social_url(url: str) -> str:
 
 def crawl_url(url: str) -> dict:
     """Crawl a URL prioritizing Cloudflare Crawl API, then fallback to Tavily."""
+    cache_key = make_cache_key("crawl_url", url)
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     # Pre-optimize for social media
     optimized_url = _optimize_social_url(url)
     
@@ -74,16 +110,16 @@ def crawl_url(url: str) -> dict:
             title = parts[0].replace("Title: ", "").strip()
             clean_text = parts[1] if len(parts) > 1 else ""
             
-        return {
+        return set_cache(cache_key, {
             "title": title,
             "text": clean_text[:10000],
             "error": None,
             "source": "Cloudflare"
-        }
+        }, 1800)
 
     # 2. Fallback to Tavily if Cloudflare fails or is unconfigured
     if not TAVILY_API_KEY:
-        return {"text": "", "error": "Crawl APIs not configured (Cloudflare/Tavily)"}
+        return set_cache(cache_key, {"text": "", "error": "Crawl APIs not configured (Cloudflare/Tavily)"}, 300)
 
     try:
         print(f"[Crawl] Falling back to Tavily Extract for: {url}")
@@ -103,15 +139,15 @@ def crawl_url(url: str) -> dict:
         content = results[0].get("raw_content", "")
         title = results[0].get("title", "") or "Extracted Page"
         
-        return {
+        return set_cache(cache_key, {
             "title": title,
             "text": content[:10000],
             "error": None,
             "source": "Tavily"
-        }
+        }, 1800)
     except Exception as e:
         print(f"[Crawl] Tavily Exception: {e}")
-        return {"text": "", "error": str(e)}
+        return set_cache(cache_key, {"text": "", "error": str(e)}, 120)
 
 def _scrape_with_cloudflare(url: str) -> str:
     """Use Cloudflare Browser Rendering Crawl API (Beta) to scrape content and meta."""
@@ -155,9 +191,9 @@ def _scrape_with_cloudflare(url: str) -> str:
             return ""
 
         # Step 2: Poll for results (since it's async)
-        max_retries = 6
+        max_retries = max(CRAWL_POLL_RETRIES, 1)
         for i in range(max_retries):
-            time.sleep(2)
+            time.sleep(max(CRAWL_POLL_INTERVAL_SECONDS, 0.2))
             print(f"[Cloudflare Crawl] Polling job {job_id} (Attempt {i+1})...")
             poll_res = requests.get(f"{cf_url}/{job_id}", headers=headers, timeout=10)
             if poll_res.status_code == 200:
@@ -204,21 +240,23 @@ def _run_gemini(client, prompt: str) -> str:
 
 def extract_keywords(query: str) -> str:
     """Extract Thai-language search keywords (or mixed) from the query."""
-    if len(query) < 20:
-        return query
+    normalized = _normalize_query_text(query)
+    quick_keywords = _cheap_keywords(normalized)
+    if len(normalized) < 120:
+        return quick_keywords
     try:
         client = get_next_client()
         if not client:
-            return query[:50]
+            return quick_keywords or normalized[:50]
         prompt = f"""Extract 3-4 highly specific search keywords from this text.
         - If the text contains Thai names, locations, or organizations (like 'ตร.บาหลี', 'Bright TV'), KEEP them in Thai.
         - DO NOT translate proper names or local events to English unless it's a globally dominant English topic.
         - Text: '{query}'
 
         Return ONLY the keywords separated by spaces."""
-        return _run_gemini(client, prompt)
+        return _run_gemini(client, prompt) or quick_keywords
     except Exception:
-        return str(query)[:50]
+        return quick_keywords or str(normalized)[:50]
 
 def extract_english_keywords(query: str) -> str:
     """Extract English-language search keywords for international coverage."""
@@ -228,6 +266,8 @@ def extract_english_keywords(query: str) -> str:
 
     if len(query) < 10:
         return regex_keywords or query
+    if len(query) < 120:
+        return regex_keywords
 
     try:
         client = get_next_client()
@@ -340,9 +380,15 @@ def search_social_context(query: str) -> list:
 
 def search_web(query: str, case_id: str = None) -> list:
     """Hybrid search using multiple engines and platforms."""
+    normalized_query = _normalize_query_text(query)
+    cache_key = make_cache_key("search_web", normalized_query)
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     try:
-        thai_keywords = extract_keywords(query)
-        english_keywords = extract_english_keywords(query)
+        thai_keywords = extract_keywords(normalized_query)
+        english_keywords = extract_english_keywords(normalized_query)
 
         # Source-Aware Enhancement
         known_sources = {
@@ -355,14 +401,14 @@ def search_web(query: str, case_id: str = None) -> list:
         }
         target_site = ""
         for name, site in known_sources.items():
-            if name in query.lower():
+            if name in normalized_query.lower():
                 target_site = site
                 break
 
-        sources = search_wikipedia(query)
-        sources.extend(search_google_news(query, lang='th', country='TH'))
+        sources = search_wikipedia(normalized_query)
+        sources.extend(search_google_news(normalized_query, lang='th', country='TH'))
         if english_keywords:
-            sources.extend(search_google_news(query, lang='en', country='US'))
+            sources.extend(search_google_news(normalized_query, lang='en', country='US'))
 
         seen_links = {s['link'] for s in sources}
         
@@ -395,7 +441,7 @@ def search_web(query: str, case_id: str = None) -> list:
             # Cast to str to satisfy linter
             database.log_request("[API] Hybrid Search", str(query)[:100], 0, "info", cost=0.003, case_id=case_id, api_name="Search_Service")
         
-        return list(sources)[:15]
+        return set_cache(cache_key, list(sources)[:15], 900)
     except Exception as e:
         print(f"Search API Error: {e}")
         return []
@@ -411,6 +457,11 @@ def _is_social_url(url: str) -> bool:
 
 def scrape_url(url: str) -> dict:
     """Scrape basic text content from a URL with social media workarounds."""
+    cache_key = make_cache_key("scrape_url", url)
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     is_social = _is_social_url(url)
     cleaned_url = _optimize_social_url(url)
     
@@ -462,14 +513,14 @@ def scrape_url(url: str) -> dict:
             if not text and title:
                 text = f"Content restricted or hidden. Metadata hint: {title}"
                 
-            return {
+            return set_cache(cache_key, {
                 "title": title or "Social Media Post", 
                 "text": text[:5000], 
                 "cleaned_url": cleaned_url, 
                 "permanent_url": permanent_url,
                 "is_social_url": True,
                 "is_placeholder": is_placeholder
-            }
+            }, 1800)
 
         # For normal sites, if content is thin, try Cloudflare
         if not text or len(text) < 100:
@@ -477,22 +528,22 @@ def scrape_url(url: str) -> dict:
             if len(cf_text) > 200:
                 text = cf_text
 
-        return {
+        return set_cache(cache_key, {
             "title": title, 
             "text": text[:5000], 
             "cleaned_url": cleaned_url, 
             "permanent_url": permanent_url,
             "is_social_url": False,
             "is_placeholder": is_placeholder
-        }
+        }, 1800)
         
     except Exception as e:
         # Final desperate attempt: if it's social, just return placeholders
-        return {
+        return set_cache(cache_key, {
             "error": str(e), 
             "text": "", 
             "title": "Social Media Post", 
             "cleaned_url": cleaned_url, 
             "permanent_url": url,
             "is_social_url": is_social
-        }
+        }, 120)

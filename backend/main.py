@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from services.llm_service import analyze_text_claim, analyze_with_grok, analyze_image_fact_check, get_next_client
+from services.cache_service import get_cache, make_cache_key, set_cache
 from services.search_service import search_web, scrape_url, crawl_url, extract_keywords
 from services.vision_service import analyze_images_with_vision
 from services.reverse_image_service import reverse_image_search
@@ -21,6 +22,9 @@ from services.r2_service import upload_image, get_image_url
 load_dotenv()
 
 app = FastAPI(title="Fake News Detection API")
+
+TEXT_RESULT_TTL = int(os.getenv("TEXT_RESULT_TTL", "1800"))
+URL_RESULT_TTL = int(os.getenv("URL_RESULT_TTL", "1800"))
 
 # Configure CORS for Next.js frontend
 _cors_origins = [
@@ -104,6 +108,11 @@ async def check_text(payload: TextCheckRequest, request: Request):
     case_id = str(uuid.uuid4())
     try:
         text = payload.text
+        cache_key = make_cache_key("check_text", text.strip())
+        cached_result = get_cache(cache_key)
+        if cached_result is not None:
+            return cached_result
+
         # Tier 0 & 1: Concurrent RSS & Web Search
         keywords = extract_keywords(text)
         loop = asyncio.get_running_loop()
@@ -134,7 +143,7 @@ async def check_text(payload: TextCheckRequest, request: Request):
         ua = request.headers.get("user-agent", "unknown")
         log_id = database.log_request("/api/check-text", str(text)[:100], latency, "success", cost=0.0001, case_id=case_id, ip_address=ip_addr, user_agent=ua)
         
-        return {
+        response_payload = {
             "log_id": log_id,
             "score": analysis_result.get("score", 50),
             "analysis": analysis_result.get("analysis", "Unable to analyze text."),
@@ -147,6 +156,7 @@ async def check_text(payload: TextCheckRequest, request: Request):
             "api_used": analysis_result.get("api_used", "Grok" if is_complex else "Gemini"),
             "visual_indicators": []
         }
+        return set_cache(cache_key, response_payload, TEXT_RESULT_TTL)
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-text", payload.text[:100], latency, "error", str(e), case_id=case_id)
@@ -166,6 +176,11 @@ def check_url(payload: UrlCheckRequest, request: Request):
     start_time = time.time()
     case_id = str(uuid.uuid4())
     try:
+        cache_key = make_cache_key("check_url", payload.url.strip())
+        cached_result = get_cache(cache_key)
+        if cached_result is not None:
+            return cached_result
+
         scraped = scrape_url(payload.url)
         cleaned_url = scraped.get('cleaned_url', payload.url)
         is_social = scraped.get('is_social_url', False)
@@ -218,13 +233,14 @@ INSTRUCTION:
             
             latency = int((time.time() - start_time) * 1000)
             log_id = database.log_request("/api/check-url", str(payload.url)[:100], latency, "success", cost=0.0005, case_id=case_id)
-            return {
+            response_payload = {
                 "log_id": log_id,
                 "score": analysis_result.get("score", 50),
                 "analysis": analysis_result.get("analysis", "Unable to analyze post."),
                 "sources": analysis_result.get("sources", []),
                 "visual_indicators": []
             }
+            return set_cache(cache_key, response_payload, URL_RESULT_TTL)
 
         # Normal URL Path
         search_query = scraped.get('title', '') or cleaned_url
@@ -237,13 +253,14 @@ INSTRUCTION:
 
         latency = int((time.time() - start_time) * 1000)
         log_id = database.log_request("/api/check-url", payload.url[:100], latency, "success", cost=0.0005, case_id=case_id)
-        return {
+        response_payload = {
             "log_id": log_id,
             "score": analysis_result.get("score", 50),
             "analysis": analysis_result.get("analysis", ""),
             "sources": analysis_result.get("sources", []),
             "visual_indicators": []
         }
+        return set_cache(cache_key, response_payload, URL_RESULT_TTL)
     except Exception as e:
         latency = int((time.time() - start_time) * 1000)
         database.log_request("/api/check-url", payload.url[:100], latency, "error", str(e), case_id=case_id)
