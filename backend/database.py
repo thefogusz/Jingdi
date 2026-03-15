@@ -1,6 +1,7 @@
 import os
 import datetime
 import json
+import re
 
 # ─── PostgreSQL via psycopg2 ───────────────────────────────────────────────
 import psycopg2
@@ -72,9 +73,53 @@ def _ensure_columns():
         conn.commit()
     except Exception:
         pass # Already exists
+
+    # image filename for admin thumbnail rendering
+    try:
+        if _is_sqlite():
+             _execute(cur, "ALTER TABLE api_logs ADD COLUMN image_filename TEXT")
+        else:
+             cur.execute("ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS image_filename TEXT")
+        conn.commit()
+    except Exception:
+        pass # Already exists
         
     cur.close()
     conn.close()
+
+
+def _backfill_image_filenames():
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        _execute(cur, '''
+            SELECT id, query
+            FROM api_logs
+            WHERE (image_filename IS NULL OR image_filename = '')
+              AND query IS NOT NULL
+              AND (
+                query LIKE '%[Image Upload]%'
+                OR query LIKE '%[Screenshot]%'
+                OR query LIKE '%jpg%'
+                OR query LIKE '%jpeg%'
+                OR query LIKE '%png%'
+                OR query LIKE '%webp%'
+                OR query LIKE '%gif%'
+              )
+        ''')
+        rows = cur.fetchall()
+        for log_id, query in rows:
+            if not query:
+                continue
+            match = re.search(r'([\w.-]+\.(?:jpg|jpeg|png|webp|gif))', query, re.IGNORECASE)
+            if not match:
+                continue
+            _execute(cur, "UPDATE api_logs SET image_filename = %s WHERE id = %s", (match.group(1), log_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Image filename backfill error: {e}")
 
 
 def init_db():
@@ -91,7 +136,8 @@ def init_db():
             error_message TEXT,
             estimated_cost_usd REAL,
             case_id TEXT,
-            api_name TEXT
+            api_name TEXT,
+            image_filename TEXT
         )
     ''')
     _execute(cur, '''
@@ -117,12 +163,14 @@ def init_db():
     
     # Run migrations to ensure columns exist on older DB instances
     _ensure_columns()
+    _backfill_image_filenames()
 
 
 def log_request(endpoint: str, query: str, latency_ms: int, status: str,
                 error_message: str = "", cost: float = 0.0,
                 case_id: str = None, api_name: str = None,
-                ip_address: str = None, user_agent: str = None) -> int:
+                ip_address: str = None, user_agent: str = None,
+                image_filename: str = None) -> int:
     try:
         conn = _get_conn()
         cur = conn.cursor()
@@ -131,11 +179,11 @@ def log_request(endpoint: str, query: str, latency_ms: int, status: str,
         query_str = '''
             INSERT INTO api_logs
                 (timestamp, endpoint, query, latency_ms, status, error_message,
-                 estimated_cost_usd, case_id, api_name, ip_address, user_agent)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 estimated_cost_usd, case_id, api_name, ip_address, user_agent, image_filename)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         '''
         
-        args = (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name, ip_address, user_agent)
+        args = (timestamp, endpoint, query, latency_ms, status, error_message, cost, case_id, api_name, ip_address, user_agent, image_filename)
 
         if _is_sqlite():
             _execute(cur, query_str, args)
@@ -296,7 +344,7 @@ def get_recent_feedback(limit: int = 15):
         conn = _get_conn()
         cur = conn.cursor()
         _execute(cur, '''
-            SELECT f.timestamp, f.is_helpful, f.reason, f.details, a.query, a.endpoint
+            SELECT f.timestamp, f.is_helpful, f.reason, f.details, a.query, a.endpoint, a.image_filename
             FROM user_feedback f
             LEFT JOIN api_logs a ON f.log_id = a.id
             ORDER BY f.id DESC LIMIT %s
@@ -306,7 +354,7 @@ def get_recent_feedback(limit: int = 15):
             feedback.append({
                 "time": r[0], "is_helpful": bool(r[1]),
                 "reason": r[2] or "-", "details": r[3] or "-",
-                "query": r[4] or "-", "endpoint": r[5] or "-"
+                "query": r[4] or "-", "endpoint": r[5] or "-", "image_filename": r[6] or ""
             })
         cur.close()
         conn.close()
@@ -321,7 +369,7 @@ def get_recent_traffic(limit: int = 20):
         conn = _get_conn()
         cur = conn.cursor()
         _execute(cur, '''
-            SELECT timestamp, endpoint, query, estimated_cost_usd, status
+            SELECT timestamp, endpoint, query, estimated_cost_usd, status, image_filename
             FROM api_logs
             WHERE (case_id IS NULL OR case_id = '') AND (api_name IS NULL OR api_name = '')
             ORDER BY id DESC LIMIT %s
@@ -332,7 +380,8 @@ def get_recent_traffic(limit: int = 20):
                 "time": r[0], "endpoint": r[1],
                 "query": r[2] if r[2] else "-",
                 "cost": round(float(r[3] or 0), 6),
-                "status": r[4]
+                "status": r[4],
+                "image_filename": r[5] or ""
             })
         cur.close()
         conn.close()
@@ -363,17 +412,36 @@ def get_cases_api_breakdown(limit: int = 20):
         for row in cases_raw:
             case_id, ts_start, ts_end, total_cost, succeeded, query = row
             _execute(cur, '''
-                SELECT api_name, status, estimated_cost_usd
+                SELECT endpoint, query, api_name, status, estimated_cost_usd, image_filename
                 FROM api_logs WHERE case_id = %s ORDER BY id ASC
             ''', (case_id,))
+            api_rows = cur.fetchall()
             apis = [
-                {"name": r[0] or "Unknown", "status": r[1],
-                 "cost": round(float(r[2] or 0), 4)}
-                for r in cur.fetchall()
+                {"name": r[2] or "Unknown", "status": r[3], "cost": round(float(r[4] or 0), 4)}
+                for r in api_rows
             ]
+
+            display_query = query or "-"
+            image_filename = ""
+            preferred_queries = [
+                r[1] for r in api_rows
+                if r[0] in ("/api/check-image", "/api/check-screenshot", "/api/check-text", "/api/check-url") and r[1]
+            ]
+            image_filenames = [r[5] for r in api_rows if len(r) > 5 and r[5]]
+            image_queries = [
+                item for item in preferred_queries
+                if any(marker in item.lower() for marker in ["[image upload]", "[screenshot]", ".jpg", ".jpeg", ".png", ".webp", ".gif"])
+            ]
+            if image_filenames:
+                image_filename = image_filenames[0]
+            if image_queries:
+                display_query = image_queries[0]
+            elif preferred_queries:
+                display_query = preferred_queries[0]
+
             cases.append({
                 "case_id": case_id, "time": ts_start,
-                "query": query or "-", "apis": apis,
+                "query": display_query, "apis": apis, "image_filename": image_filename,
                 "total_cost": round(float(total_cost or 0), 4),
                 "success": bool(succeeded)
             })

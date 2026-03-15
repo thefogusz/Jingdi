@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 import uuid
 
@@ -24,6 +25,84 @@ def _detect_platform(url: str) -> str:
     if "tiktok.com" in url_lower:
         return "TikTok"
     return "Social Media"
+
+
+def _clean_text(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip())
+
+
+def build_image_search_queries(vision_result: dict, reverse_result: dict | None = None) -> list[str]:
+    extracted_text = _clean_text(vision_result.get("extracted_text", ""))
+    english_keywords = vision_result.get("english_keywords", []) or []
+    origin_clues = vision_result.get("origin_clues", []) or []
+    visual_indicators = vision_result.get("visual_indicators", []) or []
+    entities = (reverse_result or {}).get("entities", []) or []
+
+    queries: list[str] = []
+
+    if extracted_text:
+        lines = [line.strip(" -•") for line in extracted_text.splitlines() if line.strip()]
+        if lines:
+            queries.append(" ".join(lines[:2])[:180])
+        queries.append(extracted_text[:180])
+
+    if english_keywords:
+        queries.append(" ".join(str(item).strip() for item in english_keywords[:8] if str(item).strip())[:180])
+
+    origin_terms = [str(item).strip() for item in origin_clues[:4] if str(item).strip()]
+    if origin_terms:
+        queries.append(" ".join(origin_terms)[:160])
+
+    indicator_terms = [str(item).strip() for item in visual_indicators[:4] if str(item).strip()]
+    entity_terms = [str(item).strip() for item in entities[:4] if str(item).strip()]
+    combo_terms = [term for term in origin_terms + indicator_terms + entity_terms if term]
+    if combo_terms:
+        queries.append(" ".join(combo_terms[:8])[:180])
+
+    deduped: list[str] = []
+    seen = set()
+    for query in queries:
+        normalized = _clean_text(query)
+        if len(normalized) < 8:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(normalized)
+    return deduped[:4]
+
+
+def merge_search_results(search_batches: list[list[dict]]) -> list[dict]:
+    merged: list[dict] = []
+    seen_links = set()
+    for batch in search_batches:
+        for item in batch or []:
+            link = (item or {}).get("link", "")
+            if link and link in seen_links:
+                continue
+            if link:
+                seen_links.add(link)
+            merged.append(item)
+    return merged[:15]
+
+
+def infer_image_origin_note(vision_result: dict, reverse_result: dict | None = None, search_context: list[dict] | None = None) -> str:
+    search_context = search_context or []
+    reverse_result = reverse_result or {}
+    origin_clues = vision_result.get("origin_clues", []) or []
+    exact_pages = reverse_result.get("pages", []) or []
+    top_titles = [item.get("title", "") for item in search_context[:3] if item.get("title")]
+
+    note_parts = []
+    if origin_clues:
+        note_parts.append(f"ภาพนี้ดูเหมือนเป็นการ์ดข่าว/โพสต์สรุปจากเพจ โดยมีร่องรอยบนภาพเช่น {', '.join(map(str, origin_clues[:3]))}")
+    if exact_pages:
+        note_parts.append("มีหน้าที่ใช้ภาพเดียวกันบนเว็บ จึงมีโอกาสเป็นภาพรีโพสต์หรือภาพสรุป ไม่ใช่ต้นฉบับข่าวโดยตรง")
+    if top_titles:
+        note_parts.append(f"ต้นทางน่าจะโยงไปยังข่าวที่พูดถึง {top_titles[0]}")
+
+    return " ".join(note_parts).strip()
 
 
 async def run_text_check(payload, request) -> dict:

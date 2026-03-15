@@ -11,7 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from services.check_service import run_text_check, run_url_check
+from services.check_service import (
+    build_image_search_queries,
+    infer_image_origin_note,
+    merge_search_results,
+    run_text_check,
+    run_url_check,
+)
 from services.llm_service import analyze_text_claim, analyze_with_grok
 from services.r2_service import get_image_url, upload_image
 from services.reverse_image_service import reverse_image_search
@@ -111,23 +117,39 @@ async def check_image(request: Request, files: List[UploadFile] = File(...)):
 
         rev_search = reverse_image_search(public_img_url) if public_img_url else {}
         rev_summary = rev_search.get("summary", "")
+        image_queries = build_image_search_queries(vision_result, rev_search)
         combined_context = (
             f"[VISION ANALYSIS]: {vision_analysis}\n"
             f"[VISUAL INDICATORS]: {', '.join(visual_indicators)}\n"
             f"[AI SIGNALS]: {', '.join(ai_signals)}\n\n{rev_summary}"
         )
 
-        if extracted_text:
-            search_context = search_web(extracted_text, case_id)
+        if extracted_text or image_queries:
+            search_batches = [search_web(query, case_id) for query in image_queries] or [search_web(extracted_text, case_id)]
+            search_context = merge_search_results(search_batches)
             full_context = f"{combined_context}\n\n[WEB SEARCH RESULTS]:\n{str(search_context)}"
-            analysis_result = analyze_text_claim(f"Verify image claim: {extracted_text}", full_context)
+            analysis_subject = extracted_text or " ".join(image_queries[:2])
+            analysis_result = analyze_text_claim(f"Verify image claim: {analysis_subject}", full_context)
             if (40 < analysis_result.get("score", 50) < 60) or not analysis_result.get("sources"):
-                analysis_result = analyze_with_grok(f"Verify image: {extracted_text}", full_context)
+                analysis_result = analyze_with_grok(f"Verify image: {analysis_subject}", full_context)
         else:
+            search_context = []
             analysis_result = analyze_with_grok("วิเคราะห์ภาพจากสิ่งที่เห็นและประวัติภาพจาก Google", combined_context)
 
+        origin_note = infer_image_origin_note(vision_result, rev_search, search_context)
+        if origin_note and origin_note not in analysis_result.get("analysis", ""):
+            analysis_result["analysis"] = f"{origin_note}\n\n{analysis_result.get('analysis', '')}".strip()
+
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-image", f"[Image Upload] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
+        log_id = database.log_request(
+            "/api/check-image",
+            f"[Image Upload] {img_filename}",
+            latency,
+            "success",
+            cost=0.005,
+            case_id=case_id,
+            image_filename=img_filename,
+        )
         return {
             "log_id": log_id,
             "score": analysis_result.get("score", 50),
@@ -159,23 +181,39 @@ async def check_screenshot(request: Request, files: List[UploadFile] = File(...)
 
         rev_search = reverse_image_search(public_img_url) if public_img_url else {}
         rev_summary = rev_search.get("summary", "")
+        image_queries = build_image_search_queries(vision_result, rev_search)
         combined_context = (
             f"[VISION ANALYSIS]: {vision_analysis}\n"
             f"[VISUAL INDICATORS]: {', '.join(visual_indicators)}\n"
             f"[AI SIGNALS]: {', '.join(ai_signals)}\n\n{rev_summary}"
         )
 
-        if extracted_text:
-            search_context = search_web(extracted_text, case_id)
+        if extracted_text or image_queries:
+            search_batches = [search_web(query, case_id) for query in image_queries] or [search_web(extracted_text, case_id)]
+            search_context = merge_search_results(search_batches)
             full_context = f"{combined_context}\n\n[WEB SEARCH RESULTS]:\n{str(search_context)}"
-            analysis_result = analyze_text_claim(f"Verify screenshot claim: {extracted_text}", full_context)
+            analysis_subject = extracted_text or " ".join(image_queries[:2])
+            analysis_result = analyze_text_claim(f"Verify screenshot claim: {analysis_subject}", full_context)
             if (40 < analysis_result.get("score", 50) < 60) or not analysis_result.get("sources"):
-                analysis_result = analyze_with_grok(f"Verify screenshot: {extracted_text}", full_context)
+                analysis_result = analyze_with_grok(f"Verify screenshot: {analysis_subject}", full_context)
         else:
+            search_context = []
             analysis_result = analyze_with_grok("วิเคราะห์ภาพจากสิ่งที่เห็นและประวัติภาพจาก Google", combined_context)
 
+        origin_note = infer_image_origin_note(vision_result, rev_search, search_context)
+        if origin_note and origin_note not in analysis_result.get("analysis", ""):
+            analysis_result["analysis"] = f"{origin_note}\n\n{analysis_result.get('analysis', '')}".strip()
+
         latency = int((time.time() - start_time) * 1000)
-        log_id = database.log_request("/api/check-screenshot", f"[Screenshot] {img_filename}", latency, "success", cost=0.005, case_id=case_id)
+        log_id = database.log_request(
+            "/api/check-screenshot",
+            f"[Screenshot] {img_filename}",
+            latency,
+            "success",
+            cost=0.005,
+            case_id=case_id,
+            image_filename=img_filename,
+        )
         return {
             "log_id": log_id,
             "score": analysis_result.get("score", 50),

@@ -40,6 +40,7 @@ interface TrafficRecord {
   query: string;
   cost: number;
   status: string;
+  image_filename?: string;
 }
 
 interface FeedbackRecord {
@@ -49,6 +50,7 @@ interface FeedbackRecord {
   details: string;
   query: string;
   endpoint: string;
+  image_filename?: string;
 }
 
 interface ApiRecord {
@@ -64,6 +66,7 @@ interface CaseRecord {
   apis: ApiRecord[];
   total_cost: number;
   success: boolean;
+  image_filename?: string;
 }
 
 interface BrandTotal {
@@ -87,6 +90,12 @@ interface DashboardStats {
   r2_public_url?: string;
   r2_bucket?: string;
   r2_account_prefix?: string;
+}
+
+interface PreviewImageState {
+  url: string;
+  filename: string;
+  label: string;
 }
 
 // Brand color config
@@ -113,17 +122,35 @@ function BrandBadge({ name }: { name: string }) {
   );
 }
 
-function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size?: "sm" | "md" | "lg", r2BaseUrl?: string }) {
+function QueryThumbnail({
+  query,
+  size = "md",
+  r2BaseUrl,
+  imageFilename,
+  onPreview,
+}: {
+  query: string,
+  size?: "sm" | "md" | "lg",
+  r2BaseUrl?: string,
+  imageFilename?: string,
+  onPreview?: (image: PreviewImageState) => void,
+}) {
   // Regex to catch [Image Upload], [Screenshot], image: prefix, or bare image filenames (supports underscores)
   const m = query.match(/\[(?:Image Upload|Screenshot)\]\s*([\w.-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
             query.match(/image:\s*([\w.-]+\.(?:jpg|jpeg|png|webp|gif))/i) ||
             query.match(/([\w-]{8,}\.(?:jpg|jpeg|png|webp|gif))/i);
-            
-  if (!m) return <span className="truncate flex-1">{query}</span>;
+  const filename = imageFilename || m?.[1] || '';
+  const proxyUrl = filename ? `/api/admin/image/${filename}` : '';
+  const directUrl = filename && r2BaseUrl ? `${r2BaseUrl.replace(/\/$/, '')}/${filename}` : '';
+  const [imgUrl, setImgUrl] = useState(proxyUrl);
+  const [imageMissing, setImageMissing] = useState(false);
 
-  const filename = m[1];
-  // Prioritize direct R2 URL if available, fallback to proxy
-  const imgUrl = r2BaseUrl ? `${r2BaseUrl.replace(/\/$/, '')}/${filename}` : `/api/admin/image/${filename}`;
+  useEffect(() => {
+    setImgUrl(proxyUrl);
+    setImageMissing(false);
+  }, [proxyUrl]);
+
+  if (!filename) return <span className="truncate flex-1">{query}</span>;
   
   const cleanText = query
     .replace(m[0], '')
@@ -148,22 +175,31 @@ function QueryThumbnail({ query, size = "md", r2BaseUrl }: { query: string, size
       <span className="truncate text-neutral-400 text-[10px] bg-white/5 px-1.5 py-0.5 rounded border border-white/5" title={query}>
         {cleanText || 'Image'}
       </span>
-      <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 group/img relative" title={`View original: ${filename}`}>
-        <img 
-          src={imgUrl} 
-          className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative bg-neutral-800`} 
-          alt={`Image: ${filename}`} 
-          onError={(e) => { 
-            // If direct URL fails, try proxy as fallback once
-            if (r2BaseUrl && e.currentTarget.src.includes(r2BaseUrl)) {
-              e.currentTarget.src = `/api/admin/image/${filename}`;
-            } else {
-              // Final failure: show border but mark as broken
-              e.currentTarget.style.opacity = '0.3';
-            }
-          }}
-        />
-      </a>
+      <button
+        type="button"
+        onClick={() => onPreview?.({ url: imgUrl, filename, label: cleanText || 'Image' })}
+        className="shrink-0 group/img relative"
+        title={`Preview: ${filename}`}
+      >
+        {imageMissing ? (
+          <div className={`${imgClasses} rounded-md border border-red-500/40 bg-red-500/10 text-[8px] text-red-300 flex items-center justify-center text-center px-1 leading-tight`}>
+            missing
+          </div>
+        ) : (
+          <img 
+            src={imgUrl} 
+            className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative bg-neutral-800`} 
+            alt={`Image: ${filename}`} 
+            onError={() => { 
+              if (imgUrl === proxyUrl && directUrl) {
+                setImgUrl(directUrl);
+              } else {
+                setImageMissing(true);
+              }
+            }}
+          />
+        )}
+      </button>
     </div>
   );
 }
@@ -179,6 +215,7 @@ export default function AdminDashboard() {
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [previewImage, setPreviewImage] = useState<PreviewImageState | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const getPassword = () => Cookies.get('admin_session');
@@ -310,6 +347,45 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 font-sans">
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="max-w-5xl w-full bg-neutral-950 border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-neutral-900/80">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-white truncate">{previewImage.label}</div>
+                <div className="text-xs text-neutral-500 font-mono truncate">{previewImage.filename}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImage.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-300 hover:bg-blue-500/10 transition-colors"
+                >
+                  Open image
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImage(null)}
+                  className="text-sm px-3 py-1.5 rounded-lg border border-white/10 text-neutral-300 hover:bg-white/5 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="bg-black flex items-center justify-center max-h-[80vh] overflow-auto">
+              <img src={previewImage.url} alt={previewImage.filename} className="max-w-full h-auto object-contain" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navbar */}
       <nav className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -506,7 +582,7 @@ export default function AdminDashboard() {
                     )}
                     <div className="mt-3 text-xs text-neutral-500 font-mono truncate pt-3 border-t border-white/5 flex items-center group-hover:text-neutral-400 transition-colors">
                       <span className="text-neutral-500 mr-2 font-sans font-medium">{fb.endpoint.replace('/api/', '')}</span>
-                      <QueryThumbnail query={fb.query} size="sm" r2BaseUrl={stats?.r2_public_url} />
+                      <QueryThumbnail query={fb.query} size="sm" r2BaseUrl={stats?.r2_public_url} imageFilename={fb.image_filename} onPreview={setPreviewImage} />
                     </div>
                   </div>
                 ))}
@@ -547,7 +623,7 @@ export default function AdminDashboard() {
                           {request.endpoint.replace('/api/', '')}
                         </td>
                         <td className="px-5 py-4 max-w-xs text-neutral-300">
-                          <QueryThumbnail query={request.query} size="md" r2BaseUrl={stats?.r2_public_url} />
+                          <QueryThumbnail query={request.query} size="md" r2BaseUrl={stats?.r2_public_url} imageFilename={request.image_filename} onPreview={setPreviewImage} />
                         </td>
                         <td className="px-5 py-4 font-mono text-[11px] text-emerald-400/80 group-hover:text-emerald-400 text-right transition-colors">
                           ${request.cost.toFixed(4)}
@@ -600,7 +676,7 @@ export default function AdminDashboard() {
                           {new Date(c.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </td>
                         <td className="px-4 py-3">
-                           <QueryThumbnail query={c.query} size="sm" r2BaseUrl={stats?.r2_public_url} />
+                           <QueryThumbnail query={c.query} size="sm" r2BaseUrl={stats?.r2_public_url} imageFilename={c.image_filename} onPreview={setPreviewImage} />
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
