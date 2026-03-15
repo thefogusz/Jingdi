@@ -144,6 +144,11 @@ def stabilize_image_verdict(analysis_result: dict, vision_result: dict, search_c
         "โพสต์ต้นทาง", "โพสต์บน x", "โพสต์จาก x", "โพสต์จากเพจ", "@efinancethai",
         "social consensus", "community notes", "ไม่มีแหล่งอ้างอิงดั้งเดิม"
     ]
+    corroboration_keywords = [
+        "สอดคล้อง web sources", "สอดคล้องกับ web sources", "สอดคล้องกับแหล่งข่าว",
+        "พบแหล่งข่าวจริง", "มีแหล่งข่าวจริงรองรับ", "ข่าวเก่า", "ตรงกับรายงาน",
+        "corroborat", "aligned with web sources", "supported by sources"
+    ]
 
     matched_reliable = 0
     matched_article = 0
@@ -155,6 +160,17 @@ def stabilize_image_verdict(analysis_result: dict, vision_result: dict, search_c
             matched_article += 1
 
     if matched_reliable == 0:
+        return analysis_result
+
+    if any(keyword in analysis_text.lower() for keyword in corroboration_keywords):
+        analysis_result["score"] = max(score, 70 if matched_article >= 1 else 60)
+        if not sources:
+            analysis_result["sources"] = search_context[:3]
+        if "ไม่ควรถูกจัดเป็นข่าวปลอม" not in analysis_text:
+            analysis_result["analysis"] = (
+                "พบข้อมูลจากเว็บข่าวรองรับประเด็นในภาพ จึงไม่ควรถูกจัดเป็นข่าวปลอม\n\n"
+                f"{analysis_text}"
+            ).strip()
         return analysis_result
 
     if any(keyword in analysis_text.lower() for keyword in debunk_keywords):
