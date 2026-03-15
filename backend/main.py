@@ -17,6 +17,7 @@ from services.check_service import (
     merge_search_results,
     run_text_check,
     run_url_check,
+    stabilize_image_verdict,
 )
 from services.llm_service import analyze_text_claim, analyze_with_grok
 from services.r2_service import get_image_url, upload_image
@@ -139,6 +140,7 @@ async def check_image(request: Request, files: List[UploadFile] = File(...)):
         origin_note = infer_image_origin_note(vision_result, rev_search, search_context)
         if origin_note and origin_note not in analysis_result.get("analysis", ""):
             analysis_result["analysis"] = f"{origin_note}\n\n{analysis_result.get('analysis', '')}".strip()
+        analysis_result = stabilize_image_verdict(analysis_result, vision_result, search_context)
 
         latency = int((time.time() - start_time) * 1000)
         log_id = database.log_request(
@@ -203,6 +205,7 @@ async def check_screenshot(request: Request, files: List[UploadFile] = File(...)
         origin_note = infer_image_origin_note(vision_result, rev_search, search_context)
         if origin_note and origin_note not in analysis_result.get("analysis", ""):
             analysis_result["analysis"] = f"{origin_note}\n\n{analysis_result.get('analysis', '')}".strip()
+        analysis_result = stabilize_image_verdict(analysis_result, vision_result, search_context)
 
         latency = int((time.time() - start_time) * 1000)
         log_id = database.log_request(

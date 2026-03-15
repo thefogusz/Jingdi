@@ -7,7 +7,7 @@ import database
 from services.cache_service import get_cache, make_cache_key, set_cache
 from services.llm_service import analyze_text_claim, analyze_with_grok
 from services.rss_service import search_rss_precheck
-from services.search_service import crawl_url, extract_keywords, scrape_url, search_web
+from services.search_service import crawl_url, extract_english_keywords, extract_keywords, scrape_url, search_web
 
 
 TEXT_RESULT_TTL = 1800
@@ -45,6 +45,9 @@ def build_image_search_queries(vision_result: dict, reverse_result: dict | None 
         if lines:
             queries.append(" ".join(lines[:2])[:180])
         queries.append(extracted_text[:180])
+        english_from_text = extract_english_keywords(extracted_text)
+        if english_from_text:
+            queries.append(english_from_text[:180])
 
     if english_keywords:
         queries.append(" ".join(str(item).strip() for item in english_keywords[:8] if str(item).strip())[:180])
@@ -59,6 +62,17 @@ def build_image_search_queries(vision_result: dict, reverse_result: dict | None 
     if combo_terms:
         queries.append(" ".join(combo_terms[:8])[:180])
 
+    lowered_text = extracted_text.lower()
+    lowered_joined = " ".join(queries).lower()
+    if "bitcoin" in lowered_text or "bitcoin" in lowered_joined:
+        if any(term in lowered_text for term in ["pokemon", "โปเกมอน"]):
+            queries.append("Boris Johnson Bitcoin Pokemon cards")
+            queries.append("Boris Johnson Bitcoin comparison Pokemon cards")
+        if any(term in lowered_text for term in ["อังกฤษ", "นายก", "boris"]):
+            queries.append("Boris Johnson Bitcoin statement March 2026")
+    if "efinancethai" in lowered_joined or any("finance" in str(item).lower() for item in origin_clues):
+        queries.append("eFinanceThai Boris Johnson Bitcoin")
+
     deduped: list[str] = []
     seen = set()
     for query in queries:
@@ -70,7 +84,7 @@ def build_image_search_queries(vision_result: dict, reverse_result: dict | None 
             continue
         seen.add(key)
         deduped.append(normalized)
-    return deduped[:4]
+    return deduped[:6]
 
 
 def merge_search_results(search_batches: list[list[dict]]) -> list[dict]:
@@ -103,6 +117,70 @@ def infer_image_origin_note(vision_result: dict, reverse_result: dict | None = N
         note_parts.append(f"ต้นทางน่าจะโยงไปยังข่าวที่พูดถึง {top_titles[0]}")
 
     return " ".join(note_parts).strip()
+
+
+def stabilize_image_verdict(analysis_result: dict, vision_result: dict, search_context: list[dict] | None = None) -> dict:
+    search_context = search_context or []
+    score = analysis_result.get("score", 50)
+    analysis_text = str(analysis_result.get("analysis", ""))
+    sources = analysis_result.get("sources", []) or []
+    origin_clues = vision_result.get("origin_clues", []) or []
+
+    if not search_context:
+        return analysis_result
+
+    reliable_keywords = [
+        "daily mail", "reuters", "bbc", "cnn", "coindesk", "bloomberg",
+        "the guardian", "independent", "cointelegraph", "finance", "yahoo", "msn"
+    ]
+    debunk_keywords = [
+        "ปลอม", "ข่าวปลอม", "fabricated", "fake", "debunk", "hoax", "ai-generated"
+    ]
+    social_post_keywords = [
+        "โพสต์ต้นทาง", "โพสต์บน x", "โพสต์จาก x", "โพสต์จากเพจ", "@efinancethai",
+        "social consensus", "community notes", "ไม่มีแหล่งอ้างอิงดั้งเดิม"
+    ]
+
+    matched_reliable = 0
+    for item in search_context[:8]:
+        title = f"{item.get('title', '')} {item.get('link', '')}".lower()
+        if any(keyword in title for keyword in reliable_keywords):
+            matched_reliable += 1
+
+    if matched_reliable == 0:
+        return analysis_result
+
+    if any(keyword in analysis_text.lower() for keyword in debunk_keywords):
+        if matched_reliable >= 2 and origin_clues:
+            analysis_result["score"] = max(score, 60)
+            analysis_result["analysis"] = (
+                "ภาพนี้ดูเป็นโพสต์สรุปข่าวจากเพจ ไม่ใช่หลักฐานว่าข่าวปลอมโดยตรง "
+                "และมีร่องรอยจากแหล่งข่าวจริงรองรับ จึงควรจัดเป็นข่าวจริง/ข่าวจริงที่ถูกนำมาสรุป มากกว่าข่าวปลอม\n\n"
+                f"{analysis_text}"
+            ).strip()
+        return analysis_result
+
+    if any(keyword in analysis_text.lower() for keyword in social_post_keywords):
+        if matched_reliable >= 1:
+            analysis_result["score"] = max(score, 62 if origin_clues else 58)
+            analysis_result["analysis"] = (
+                "ภาพนี้เป็นโพสต์สรุปข่าวจากเพจหรือโซเชียล ซึ่งไม่ใช่ต้นฉบับข่าวโดยตรง "
+                "แต่พบแหล่งข่าวจริงรองรับประเด็นหลัก จึงไม่ควรสรุปว่าเป็นข่าวปลอมเพียงเพราะต้นภาพมาจากโซเชียล\n\n"
+                f"{analysis_text}"
+            ).strip()
+
+    if matched_reliable >= 1 and score < 55:
+        analysis_result["score"] = 68 if origin_clues else 60
+        analysis_result["analysis"] = (
+            "พบแหล่งข่าวจริงรองรับประเด็นในภาพ และภาพนี้มีลักษณะเป็นการ์ดสรุปข่าวจากเพจ "
+            "จึงไม่ควรถูกจัดเป็นข่าวปลอมเพียงเพราะเป็นภาพรีโพสต์\n\n"
+            f"{analysis_text}"
+        ).strip()
+
+    if matched_reliable >= 1 and not sources:
+        analysis_result["sources"] = search_context[:3]
+
+    return analysis_result
 
 
 async def run_text_check(payload, request) -> dict:

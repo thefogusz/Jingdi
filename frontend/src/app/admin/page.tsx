@@ -144,13 +144,26 @@ function QueryThumbnail({
   const directUrl = filename && r2BaseUrl ? `${r2BaseUrl.replace(/\/$/, '')}/${filename}` : '';
   const [imgUrl, setImgUrl] = useState(proxyUrl);
   const [imageMissing, setImageMissing] = useState(false);
+  const [imageReady, setImageReady] = useState(false);
 
   useEffect(() => {
     setImgUrl(proxyUrl);
     setImageMissing(false);
+    setImageReady(false);
   }, [proxyUrl]);
 
-  if (!filename) return <span className="truncate flex-1">{query}</span>;
+  if (!filename) {
+    return (
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <span className="truncate text-neutral-400 text-[10px] bg-white/5 px-1.5 py-0.5 rounded border border-white/5" title={query}>
+          {query || 'Image'}
+        </span>
+        <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-300">
+          no-file
+        </span>
+      </div>
+    );
+  }
   
   const cleanText = query
     .replace(m[0], '')
@@ -186,18 +199,26 @@ function QueryThumbnail({
             missing
           </div>
         ) : (
-          <img 
-            src={imgUrl} 
-            className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative bg-neutral-800`} 
-            alt={`Image: ${filename}`} 
-            onError={() => { 
-              if (imgUrl === proxyUrl && directUrl) {
-                setImgUrl(directUrl);
-              } else {
-                setImageMissing(true);
-              }
-            }}
-          />
+          <>
+            {!imageReady && (
+              <div className={`${imgClasses} rounded-md border border-neutral-700 bg-neutral-800/80 text-[8px] text-neutral-400 flex items-center justify-center text-center px-1 leading-tight absolute inset-0`}>
+                loading
+              </div>
+            )}
+            <img 
+              src={imgUrl} 
+              className={`${imgClasses} object-cover rounded-md border border-neutral-700 ${scale} transform origin-left transition-all shadow-lg hover:z-50 relative bg-neutral-800 ${imageReady ? 'opacity-100' : 'opacity-0'}`} 
+              alt={`Image: ${filename}`} 
+              onLoad={() => setImageReady(true)}
+              onError={() => { 
+                if (imgUrl === proxyUrl && directUrl) {
+                  setImgUrl(directUrl);
+                } else {
+                  setImageMissing(true);
+                }
+              }}
+            />
+          </>
         )}
       </button>
     </div>
