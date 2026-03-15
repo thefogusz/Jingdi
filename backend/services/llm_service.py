@@ -27,8 +27,9 @@ def verify_url(url: str) -> bool:
         return cached
 
     lower_url = url.lower()
+    # Allow social media links if they were returned by search as evidence
     if "x.com/" in lower_url or "twitter.com/" in lower_url:
-        return set_cache(cache_key, False, 3600)
+        return set_cache(cache_key, True, 3600)
     if "example.com" in lower_url or "your-search-keywords" in lower_url:
         return set_cache(cache_key, False, 3600)
     if any(dm in lower_url for dm in ["facebook.com", "fb.watch", "instagram.com", "t.co", "bit.ly"]):
@@ -264,6 +265,7 @@ def analyze_with_grok(text: str, search_context: str = "") -> dict:
     - SOURCES: Include real links to X posts or relevant sources.
     
     Respond in JSON: {{ "score": 0, "analysis": "...", "claims_extracted": [], "suspicious_words": [], "sources": [] }}
+    - score: 0-100 (0=Fake/Hoax, 100=Real/Verified fact). **USE FULL 0-100 SCALE.**
     """
     try:
         system_msg = "You are a highly accurate fact-checker AI with live web search. Respond with valid JSON only."
@@ -314,7 +316,7 @@ def analyze_image_fact_check(image_bytes_list: list, hint_context: str = "", log
         "You are a fact-checker with VISION and LIVE WEB SEARCH. Verify the image claim.\n"
         f"Context: {hint_context}\n"
         "1. Read Headline Text Overlay. 2. Verify with sources. 3. Evaluate Origin.\n"
-        "4. Tone: Simple Thai. 5. JSON Format only."
+        "4. Tone: Simple Thai. 5. JSON Format only. 6. score: 0-100 (0=Fake, 100=Real)."
     )
     content.append({"type": "text", "text": prompt_text})
     try:

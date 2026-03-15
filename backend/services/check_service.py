@@ -260,7 +260,8 @@ async def run_text_check(payload, request) -> dict:
             )
             analysis_result = analyze_text_claim(text, search_context=search_context)
             score = analysis_result.get("score", 50)
-            if (40 < score < 60) or not analysis_result.get("sources") or analysis_result.get("skip_to_grok"):
+            has_sources = bool(analysis_result.get("sources"))
+            if (40 < score < 60) or (score < 80 and not has_sources) or analysis_result.get("skip_to_grok"):
                 database.log_request(
                     "[API] Grok 4.1 Reasoning",
                     text[:100],
@@ -386,7 +387,9 @@ INSTRUCTION:
         combined_context = f"Scraped Content: {scraped.get('text', 'N/A')}\n\nSearch: {search_context}"
         analysis_result = analyze_text_claim(f"Verify article: {cleaned_url}", search_context=combined_context)
 
-        if (40 < analysis_result.get("score", 50) < 60) or not analysis_result.get("sources"):
+        score = analysis_result.get("score", 50)
+        has_sources = bool(analysis_result.get("sources"))
+        if (40 < score < 60) or (score < 80 and not has_sources):
             analysis_result = analyze_with_grok(f"Verify story: {cleaned_url}", search_context=search_context)
 
         latency = int((time.time() - start_time) * 1000)
